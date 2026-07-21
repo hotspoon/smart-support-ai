@@ -1,6 +1,6 @@
 # HaloDesk
 
-AI-first customer support workspace yang terinspirasi pola kerja Intercom dan Zendesk. Repository sudah memiliki UI demo interaktif dan fondasi produksi untuk Neon, Prisma, Better Auth, serta provider AI yang kompatibel dengan OpenAI SDK.
+AI-first customer support workspace yang terinspirasi pola kerja Intercom dan Zendesk. Dashboard admin, public customer chat, Neon, Better Auth, dan Groq sudah terhubung sebagai satu alur live.
 
 ## Keputusan arsitektur
 
@@ -12,13 +12,13 @@ AI-first customer support workspace yang terinspirasi pola kerja Intercom dan Ze
 
 ## Yang sudah tersedia
 
-- Dashboard responsive dengan KPI, chart mingguan, top topics, dan recent chats.
-- Inbox interaktif: search/filter, detail pelanggan, status, composer, dan tampilan mobile.
-- Knowledge Base CRUD dalam UI dan Route Handler.
-- Prompt/AI settings, analytics, dark mode, serta halaman login/register admin.
+- Dashboard dan analytics aktual dengan zona waktu `Asia/Jakarta`.
+- Inbox live dengan polling, search/filter, cursor pagination, status, dan optimistic reply.
+- Knowledge Base CRUD dan Prompt Settings persisten di Neon.
+- Public customer chat di `/chat`, AI reply Groq, retry, dan fallback ke antrean admin.
 - Schema multi-workspace untuk users, sessions, conversations, messages, knowledge base, dan settings.
-- Route Handlers: `/api/chat`, `/api/conversations`, `/api/messages`, `/api/kb`, `/api/settings`, `/api/auth/*`, dan `/api/health`.
-- Demo mode tetap dapat dibuka tanpa database; integrasi server aktif setelah environment variables diisi.
+- API admin mengambil workspace dan role dari session, sedangkan public chat memakai token acak dalam cookie HttpOnly.
+- Idempotency pesan dan rate limiting persisten berbasis Neon.
 
 ## Menjalankan
 
@@ -26,16 +26,18 @@ AI-first customer support workspace yang terinspirasi pola kerja Intercom dan Ze
 pnpm install
 cp .env.example .env
 pnpm db:generate
+pnpm db:migrate
+pnpm db:setup
 pnpm dev
 ```
 
-Buka `http://localhost:3000`. UI utama menggunakan data demo sampai query frontend dihubungkan ke workspace Neon.
+Buka `http://localhost:3000` untuk dashboard admin dan `http://localhost:3000/chat` untuk customer chat.
 
 ## Menghubungkan Neon
 
 1. Buat project Neon dan salin **pooled connection string** ke `DATABASE_URL`.
-2. Isi `BETTER_AUTH_SECRET` dengan secret acak minimal 32 karakter dan atur `BETTER_AUTH_URL`.
-3. Jalankan `pnpm db:migrate` untuk membuat tabel.
+2. Isi `BETTER_AUTH_SECRET` dan `CHAT_SESSION_SECRET` dengan dua secret acak minimal 32 karakter, lalu atur `BETTER_AUTH_URL`.
+3. Untuk development jalankan `pnpm db:migrate`; pada Vercel/production gunakan `prisma migrate deploy`.
 4. Buat record `Workspace` dengan slug yang sama seperti `DEFAULT_WORKSPACE_SLUG`.
 5. Biarkan `AUTH_DISABLE_SIGN_UP=false`, buka `/login`, lalu pilih **Setup pertama? Buat akun admin**.
 6. Setelah akun pertama dibuat, ubah `AUTH_DISABLE_SIGN_UP=true` dan `AUTH_REQUIRED=true`.
@@ -44,7 +46,15 @@ Jangan pernah memakai prefix `NEXT_PUBLIC_` untuk database URL, Better Auth secr
 
 ## Mengaktifkan AI dengan Groq
 
-Isi `AI_PROVIDER=groq`, `AI_API_KEY`, `AI_BASE_URL=https://api.groq.com/openai/v1`, dan `AI_MODEL=llama-3.3-70b-versatile`. Jalankan `pnpm ai:test` untuk menguji key tanpa database. Endpoint chat menyimpan pesan pelanggan dan jawaban AI dalam satu transaksi, termasuk latency dan token usage. AI diwajibkan mengakui ketika knowledge base tidak cukup dan menawarkan eskalasi.
+Isi `AI_PROVIDER=groq`, `AI_API_KEY`, `AI_BASE_URL=https://api.groq.com/openai/v1`, dan `AI_MODEL=llama-3.3-70b-versatile`. Jalankan `pnpm ai:test` untuk menguji key tanpa database. Pesan customer selalu disimpan sebelum Groq dipanggil, sehingga kegagalan provider tidak menghilangkan pesan dan conversation tetap dapat ditangani admin.
+
+## API utama
+
+- Public: `POST /api/public/conversations`, `GET/POST /api/public/messages`.
+- Inbox: `GET /api/conversations`, `PATCH /api/conversations/:id`, `GET/POST /api/conversations/:id/messages`.
+- Admin: `GET/POST/PATCH/DELETE /api/kb`, `GET/PATCH /api/settings`, dan `GET /api/analytics`.
+
+Semua API admin memvalidasi session Better Auth melalui database. Role `AGENT` hanya dapat mengakses inbox dan pesan; KB, settings, serta analytics memerlukan `ADMIN`.
 
 ## Scripts
 
@@ -60,6 +70,6 @@ pnpm db:check
 pnpm ai:test
 ```
 
-## Tahap berikutnya
+## Batas MVP
 
-Setelah koneksi Neon dan provider AI tersedia, ganti source data demo pada dashboard dengan TanStack Query ke Route Handlers, tambahkan UploadThing untuk attachment, lalu pasang rate limiting dan audit log sebelum production traffic.
+Channel yang aktif saat ini hanya WEB dengan polling. CSAT, attachment, widget embeddable, email notification, SSE, dan WebSocket ditunda.

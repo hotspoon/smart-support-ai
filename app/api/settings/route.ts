@@ -1,54 +1,66 @@
 import { z } from "zod"
 
 import { getDb } from "@/lib/db"
+import { apiError } from "@/lib/server/api"
+import { requireSession } from "@/lib/server/auth"
+import { getAIConfig } from "@/services/ai/customer-support"
 
 const settingSchema = z.object({
   systemPrompt: z.string().min(20).max(10_000),
   temperature: z.number().min(0).max(2),
-  model: z.string().min(1).max(100),
   autoReply: z.boolean(),
+  maxHistory: z.number().int().min(1).max(50).default(10),
   fallbackToAgent: z.boolean().default(true),
 })
 
-const workspaceSlug = process.env.DEFAULT_WORKSPACE_SLUG ?? "halo-shop"
-
 export async function GET() {
   try {
+    const { workspaceId } = await requireSession(["ADMIN"])
     const data = await getDb().promptSetting.findFirst({
-      where: { workspace: { slug: workspaceSlug } },
-    })
-    return Response.json({ data })
-  } catch (error) {
-    return Response.json(
-      {
-        error:
-          error instanceof Error ? error.message : "Gagal memuat pengaturan",
+      where: { workspaceId },
+      select: {
+        systemPrompt: true,
+        temperature: true,
+        autoReply: true,
+        maxHistory: true,
+        fallbackToAgent: true,
+        updatedAt: true,
       },
-      { status: 503 }
-    )
+    })
+    const ai = getAIConfig()
+    return Response.json({
+      data,
+      runtime: { provider: ai.provider, model: ai.model },
+    })
+  } catch (error) {
+    return apiError(error)
   }
 }
 
 export async function PATCH(request: Request) {
   try {
+    const { workspaceId } = await requireSession(["ADMIN"])
     const input = settingSchema.parse(await request.json())
-    const workspace = await getDb().workspace.findUniqueOrThrow({
-      where: { slug: workspaceSlug },
-      select: { id: true },
-    })
+    const ai = getAIConfig()
     const data = await getDb().promptSetting.upsert({
-      where: { workspaceId: workspace.id },
-      create: { ...input, workspaceId: workspace.id },
+      where: { workspaceId },
+      create: {
+        ...input,
+        workspaceId,
+        model: ai.model ?? "llama-3.3-70b-versatile",
+      },
       update: input,
+      select: {
+        systemPrompt: true,
+        temperature: true,
+        autoReply: true,
+        maxHistory: true,
+        fallbackToAgent: true,
+        updatedAt: true,
+      },
     })
     return Response.json({ data })
   } catch (error) {
-    return Response.json(
-      {
-        error:
-          error instanceof Error ? error.message : "Pengaturan tidak valid",
-      },
-      { status: 400 }
-    )
+    return apiError(error)
   }
 }

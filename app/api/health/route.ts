@@ -7,6 +7,9 @@ export function GET() {
     services: {
       database: Boolean(process.env.DATABASE_URL),
       ai: ai.configured,
+      chatSession: Boolean(
+        process.env.CHAT_SESSION_SECRET || process.env.BETTER_AUTH_SECRET
+      ),
     },
     ai: { provider: ai.provider, model: ai.model ?? null },
   })

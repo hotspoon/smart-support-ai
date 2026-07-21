@@ -24,6 +24,11 @@ enum MessageSender {
   ADMIN
 }
 
+enum ResolutionSource {
+  AI
+  ADMIN
+}
+
 model Workspace {
   id            String          @id @default(cuid())
   name          String
@@ -99,40 +104,57 @@ model Verification {
 }
 
 model Conversation {
-  id            String             @id @default(cuid())
-  workspaceId   String
-  workspace     Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  assignedToId  String?
-  assignedTo    User?              @relation("AssignedAgent", fields: [assignedToId], references: [id], onDelete: SetNull)
-  customerName  String
-  customerEmail String?
-  channel       String             @default("WEB")
-  status        ConversationStatus @default(OPEN)
-  subject       String?
-  summary       String?
-  tags          String[]
-  messages      Message[]
-  createdAt     DateTime           @default(now())
-  updatedAt     DateTime           @updatedAt
-  resolvedAt    DateTime?
+  id               String             @id @default(cuid())
+  workspaceId      String
+  workspace        Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  assignedToId     String?
+  assignedTo       User?              @relation("AssignedAgent", fields: [assignedToId], references: [id], onDelete: SetNull)
+  customerName     String
+  customerEmail    String?
+  channel          String             @default("WEB")
+  status           ConversationStatus @default(OPEN)
+  subject          String?
+  summary          String?
+  tags             String[]
+  publicTokenHash  String?            @unique
+  lastMessageAt    DateTime           @default(now())
+  resolutionSource ResolutionSource?
+  messages         Message[]
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  resolvedAt       DateTime?
 
   @@index([workspaceId, status, updatedAt])
   @@index([assignedToId])
 }
 
 model Message {
-  id             String        @id @default(cuid())
-  conversationId String
-  conversation   Conversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  sender         MessageSender
-  content        String        @db.Text
-  model          String?
-  latencyMs      Int?
-  inputTokens    Int?
-  outputTokens   Int?
-  createdAt      DateTime      @default(now())
+  id              String        @id @default(cuid())
+  conversationId  String
+  conversation    Conversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender          MessageSender
+  content         String        @db.Text
+  model           String?
+  latencyMs       Int?
+  inputTokens     Int?
+  outputTokens    Int?
+  clientMessageId String?
+  createdAt       DateTime      @default(now())
 
+  @@unique([conversationId, clientMessageId])
   @@index([conversationId, createdAt])
+}
+
+model RateLimitBucket {
+  id          String   @id @default(cuid())
+  key         String
+  windowStart DateTime
+  expiresAt   DateTime
+  count       Int      @default(1)
+  updatedAt   DateTime @updatedAt
+
+  @@unique([key, windowStart])
+  @@index([expiresAt])
 }
 
 model KnowledgeBase {

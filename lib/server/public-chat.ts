@@ -7,10 +7,27 @@ import { ApiError } from "@/lib/server/api"
 export const PUBLIC_CHAT_COOKIE = "halodesk_chat"
 
 function chatSecret() {
-  const value =
-    process.env.CHAT_SESSION_SECRET || process.env.BETTER_AUTH_SECRET
-  if (!value) throw new ApiError(503, "Chat session belum dikonfigurasi")
-  return value
+  const chat = process.env.CHAT_SESSION_SECRET
+  const auth = process.env.BETTER_AUTH_SECRET
+
+  if (!auth || auth.length < 32) {
+    throw new ApiError(503, "BETTER_AUTH_SECRET minimal 32 karakter")
+  }
+  if (process.env.NODE_ENV === "production" && !chat) {
+    throw new ApiError(503, "CHAT_SESSION_SECRET wajib di production")
+  }
+  if (chat && chat.length < 32) {
+    throw new ApiError(503, "CHAT_SESSION_SECRET minimal 32 karakter")
+  }
+  if (chat && chat === auth) {
+    throw new ApiError(
+      503,
+      "CHAT_SESSION_SECRET harus berbeda dari BETTER_AUTH_SECRET"
+    )
+  }
+
+  // Development may reuse the auth secret so a fresh clone remains usable.
+  return chat || auth
 }
 
 export function createPublicToken() {

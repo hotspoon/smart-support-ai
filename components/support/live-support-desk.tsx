@@ -1,6 +1,7 @@
 "use client"
 
 import {
+  type InfiniteData,
   useInfiniteQuery,
   useMutation,
   useQuery,
@@ -43,7 +44,7 @@ import {
   Zap,
 } from "lucide-react"
 import { useTheme } from "next-themes"
-import { useState } from "react"
+import { useRef, useState } from "react"
 import {
   Area,
   AreaChart,
@@ -67,11 +68,27 @@ type Conversation = {
   subject: string | null
   tags: string[]
   lastMessageAt: string
+  assignedTo: { id: string; name: string } | null
   messages: {
     content: string
     sender: "USER" | "AI" | "ADMIN"
     createdAt: string
   }[]
+}
+type Agent = {
+  id: string
+  name: string
+  role: "ADMIN" | "AGENT"
+  image: string | null
+}
+type ConversationPage = {
+  data: Conversation[]
+  nextCursor: string | null
+}
+type ConversationPatch = {
+  status?: Status
+  assignedToId?: string | null
+  tags?: string[]
 }
 type Message = {
   id: string
@@ -79,6 +96,19 @@ type Message = {
   content: string
   createdAt: string
   clientMessageId?: string | null
+}
+type MessagesPage = { data: Message[]; nextCursor: string | null }
+
+function mergeMessagePages(pages: MessagesPage[] | undefined) {
+  const unique = new Map<string, Message>()
+  for (const page of [...(pages ?? [])].reverse()) {
+    for (const message of page.data) unique.set(message.id, message)
+  }
+  return [...unique.values()].sort(
+    (left, right) =>
+      new Date(left.createdAt).getTime() -
+        new Date(right.createdAt).getTime() || left.id.localeCompare(right.id)
+  )
 }
 type Article = {
   id: string
@@ -108,7 +138,6 @@ type Setting = {
   temperature: number
   autoReply: boolean
   maxHistory: number
-  fallbackToAgent: boolean
 }
 
 async function api<T>(url: string, options?: RequestInit): Promise<T> {
@@ -654,12 +683,78 @@ function InboxView() {
   const conversations = useInfiniteQuery({
     queryKey: ["conversations", query, status],
     queryFn: ({ pageParam }) =>
-      api<{ data: Conversation[]; nextCursor: string | null }>(
+      api<ConversationPage>(
         `/api/conversations?limit=30&query=${encodeURIComponent(query)}${status ? `&status=${status}` : ""}${pageParam ? `&cursor=${pageParam}` : ""}`
       ),
     initialPageParam: "",
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
     refetchInterval: 5_000,
+  })
+  const client = useQueryClient()
+  const agents = useQuery({
+    queryKey: ["agents"],
+    queryFn: () => api<{ data: Agent[] }>("/api/agents"),
+    staleTime: 60_000,
+  })
+  const updateConversation = useMutation({
+    mutationFn: ({ id, patch }: { id: string; patch: ConversationPatch }) =>
+      api(`/api/conversations/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(patch),
+      }),
+    onMutate: async ({ id, patch }) => {
+      await client.cancelQueries({ queryKey: ["conversations"] })
+      const previous = client.getQueriesData<
+        InfiniteData<ConversationPage, string>
+      >({ queryKey: ["conversations"] })
+      const assignedTo =
+        patch.assignedToId === undefined
+          ? undefined
+          : patch.assignedToId === null
+            ? null
+            : (agents.data?.data.find(
+                (agent) => agent.id === patch.assignedToId
+              ) ?? null)
+      client.setQueriesData<InfiniteData<ConversationPage, string>>(
+        { queryKey: ["conversations"] },
+        (current) =>
+          current
+            ? {
+                ...current,
+                pages: current.pages.map((page) => ({
+                  ...page,
+                  data: page.data.map((conversation) =>
+                    conversation.id === id
+                      ? {
+                          ...conversation,
+                          ...(patch.status ? { status: patch.status } : {}),
+                          ...(patch.tags ? { tags: patch.tags } : {}),
+                          ...(assignedTo !== undefined
+                            ? {
+                                assignedTo: assignedTo
+                                  ? {
+                                      id: assignedTo.id,
+                                      name: assignedTo.name,
+                                    }
+                                  : null,
+                              }
+                            : {}),
+                        }
+                      : conversation
+                  ),
+                })),
+              }
+            : current
+      )
+      return { previous }
+    },
+    onError: (_error, _variables, context) => {
+      for (const [key, value] of context?.previous ?? []) {
+        client.setQueryData(key, value)
+      }
+    },
+    onSettled: () =>
+      void client.invalidateQueries({ queryKey: ["conversations"] }),
   })
   const rows = conversations.data?.pages.flatMap((page) => page.data) ?? []
   const activeId = selectedId ?? rows[0]?.id ?? null
@@ -763,6 +858,10 @@ function InboxView() {
             conversationId={activeId}
             conversation={activeConversation}
             onBack={() => setShowDetail(false)}
+            onUpdate={(patch) =>
+              updateConversation.mutate({ id: activeId, patch })
+            }
+            updating={updateConversation.isPending}
           />
         ) : (
           <div className="text-center text-zinc-500">
@@ -772,68 +871,146 @@ function InboxView() {
         )}
       </section>
       {activeConversation && (
-        <aside className="hidden w-[270px] shrink-0 border-l border-zinc-200/70 p-5 2xl:block dark:border-white/10">
-          <div className="text-center">
-            <div className="flex justify-center">
-              <Avatar name={activeConversation.customerName} size="lg" />
-            </div>
-            <p className="mt-3 text-sm font-bold">
-              {activeConversation.customerName}
-            </p>
-            <p className="mt-1 text-[10px] text-zinc-400">
-              {activeConversation.customerEmail}
-            </p>
-          </div>
-          <div className="mt-6 space-y-5 border-t border-zinc-100 pt-5 dark:border-white/5">
-            <div>
-              <p className="text-[9px] font-bold tracking-wider text-zinc-400 uppercase">
-                Customer details
-              </p>
-              <div className="mt-3 space-y-3 text-[11px]">
-                <div className="flex justify-between">
-                  <span className="text-zinc-400">Channel</span>
-                  <span className="font-semibold">WEB</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-zinc-400">Status</span>
-                  <StatusBadge status={activeConversation.status} />
-                </div>
-              </div>
-            </div>
-            <div>
-              <p className="text-[9px] font-bold tracking-wider text-zinc-400 uppercase">
-                Tags
-              </p>
-              <div className="mt-3 flex flex-wrap gap-1.5">
-                {activeConversation.tags.map((tag) => (
-                  <span
-                    key={tag}
-                    className="rounded-lg bg-zinc-100 px-2 py-1 text-[9px] font-semibold dark:bg-white/5"
-                  >
-                    {tag}
-                  </span>
-                ))}
-                {!activeConversation.tags.length && (
-                  <span className="text-[10px] text-zinc-400">
-                    Belum ada tag
-                  </span>
-                )}
-              </div>
-            </div>
-            <div className="rounded-xl bg-emerald-50 p-3 dark:bg-emerald-500/10">
-              <div className="flex items-center gap-2 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
-                <Sparkles className="size-3.5" />
-                AI context
-              </div>
-              <p className="mt-2 text-[10px] leading-relaxed text-zinc-500 dark:text-zinc-400">
-                {activeConversation.subject ??
-                  "Percakapan customer dari web chat."}
-              </p>
-            </div>
-          </div>
-        </aside>
+        <CustomerPanel
+          key={activeConversation.id}
+          conversation={activeConversation}
+          agents={agents.data?.data ?? []}
+          disabled={updateConversation.isPending}
+          error={updateConversation.error}
+          onUpdate={(patch) =>
+            updateConversation.mutate({ id: activeConversation.id, patch })
+          }
+        />
       )}
     </div>
+  )
+}
+
+function CustomerPanel({
+  conversation,
+  agents,
+  disabled,
+  error,
+  onUpdate,
+}: {
+  conversation: Conversation
+  agents: Agent[]
+  disabled: boolean
+  error: Error | null
+  onUpdate: (patch: ConversationPatch) => void
+}) {
+  const [tagDraft, setTagDraft] = useState("")
+
+  function addTag() {
+    const tag = tagDraft.trim()
+    if (!tag || tag.length > 40 || conversation.tags.length >= 10) return
+    const exists = conversation.tags.some(
+      (current) => current.toLocaleLowerCase() === tag.toLocaleLowerCase()
+    )
+    setTagDraft("")
+    if (!exists) onUpdate({ tags: [...conversation.tags, tag] })
+  }
+
+  return (
+    <aside className="hidden w-[270px] shrink-0 border-l border-zinc-200/70 p-5 xl:block dark:border-white/10">
+      <div className="text-center">
+        <div className="flex justify-center">
+          <Avatar name={conversation.customerName} size="lg" />
+        </div>
+        <p className="mt-3 text-sm font-bold">{conversation.customerName}</p>
+        <p className="mt-1 text-[10px] text-zinc-400">
+          {conversation.customerEmail}
+        </p>
+      </div>
+      <div className="mt-6 space-y-5 border-t border-zinc-100 pt-5 dark:border-white/5">
+        <div>
+          <p className="text-[9px] font-bold tracking-wider text-zinc-400 uppercase">
+            Customer details
+          </p>
+          <div className="mt-3 space-y-3 text-[11px]">
+            <div className="flex justify-between">
+              <span className="text-zinc-400">Channel</span>
+              <span className="font-semibold">WEB</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-zinc-400">Status</span>
+              <StatusBadge status={conversation.status} />
+            </div>
+          </div>
+        </div>
+        <label className="block">
+          <span className="text-[9px] font-bold tracking-wider text-zinc-400 uppercase">
+            Ditugaskan ke
+          </span>
+          <select
+            aria-label="Assign agent"
+            value={conversation.assignedTo?.id ?? ""}
+            disabled={disabled}
+            onChange={(event) =>
+              onUpdate({ assignedToId: event.target.value || null })
+            }
+            className="mt-2 h-9 w-full rounded-xl border border-zinc-200 bg-transparent px-2 text-[10px] outline-none disabled:opacity-50 dark:border-white/10"
+          >
+            <option value="">Belum ditugaskan</option>
+            {agents.map((agent) => (
+              <option key={agent.id} value={agent.id}>
+                {agent.name} · {agent.role}
+              </option>
+            ))}
+          </select>
+        </label>
+        <div>
+          <p className="text-[9px] font-bold tracking-wider text-zinc-400 uppercase">
+            Tags ({conversation.tags.length}/10)
+          </p>
+          <div className="mt-3 flex flex-wrap gap-1.5">
+            {conversation.tags.map((tag) => (
+              <button
+                key={tag}
+                type="button"
+                disabled={disabled}
+                onClick={() =>
+                  onUpdate({
+                    tags: conversation.tags.filter(
+                      (current) => current !== tag
+                    ),
+                  })
+                }
+                title={`Hapus tag ${tag}`}
+                className="flex items-center gap-1 rounded-lg bg-zinc-100 px-2 py-1 text-[9px] font-semibold hover:bg-red-50 hover:text-red-600 disabled:opacity-50 dark:bg-white/5"
+              >
+                {tag} <X className="size-2.5" />
+              </button>
+            ))}
+          </div>
+          <input
+            value={tagDraft}
+            maxLength={40}
+            disabled={disabled || conversation.tags.length >= 10}
+            onChange={(event) => setTagDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === ",") {
+                event.preventDefault()
+                addTag()
+              }
+            }}
+            onBlur={addTag}
+            placeholder="Tambah tag, lalu Enter"
+            className="mt-2 h-9 w-full rounded-xl border border-zinc-200 bg-transparent px-3 text-[10px] outline-none focus:border-emerald-400 disabled:opacity-50 dark:border-white/10"
+          />
+        </div>
+        {error && <p className="text-[10px] text-red-500">{error.message}</p>}
+        <div className="rounded-xl bg-emerald-50 p-3 dark:bg-emerald-500/10">
+          <div className="flex items-center gap-2 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
+            <Sparkles className="size-3.5" />
+            AI context
+          </div>
+          <p className="mt-2 text-[10px] leading-relaxed text-zinc-500 dark:text-zinc-400">
+            {conversation.subject ?? "Percakapan customer dari web chat."}
+          </p>
+        </div>
+      </div>
+    </aside>
   )
 }
 
@@ -921,18 +1098,27 @@ function ChatDetail({
   conversationId,
   conversation,
   onBack,
+  onUpdate,
+  updating,
 }: {
   conversationId: string
   conversation?: Conversation
   onBack: () => void
+  onUpdate: (patch: ConversationPatch) => void
+  updating: boolean
 }) {
   const client = useQueryClient()
   const [content, setContent] = useState("")
+  const scrollRef = useRef<HTMLDivElement>(null)
   const key = ["messages", conversationId]
-  const messages = useQuery({
+  const messages = useInfiniteQuery({
     queryKey: key,
-    queryFn: () =>
-      api<{ data: Message[] }>(`/api/conversations/${conversationId}/messages`),
+    queryFn: ({ pageParam }) =>
+      api<MessagesPage>(
+        `/api/conversations/${conversationId}/messages?limit=50${pageParam ? `&cursor=${pageParam}` : ""}`
+      ),
+    initialPageParam: "",
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
     refetchInterval: 3_000,
   })
   const send = useMutation({
@@ -943,19 +1129,23 @@ function ChatDetail({
       }),
     onMutate: async (payload) => {
       await client.cancelQueries({ queryKey: key })
-      const previous = client.getQueryData<{ data: Message[] }>(key)
-      client.setQueryData<{ data: Message[] }>(key, {
-        data: [
-          ...(previous?.data ?? []),
-          {
-            id: `temp-${payload.clientMessageId}`,
-            sender: "ADMIN",
-            content: payload.content,
-            clientMessageId: payload.clientMessageId,
-            createdAt: new Date().toISOString(),
-          },
-        ],
-      })
+      const previous =
+        client.getQueryData<InfiniteData<MessagesPage, string>>(key)
+      if (previous) {
+        const optimistic: Message = {
+          id: `temp-${payload.clientMessageId}`,
+          sender: "ADMIN",
+          content: payload.content,
+          clientMessageId: payload.clientMessageId,
+          createdAt: new Date().toISOString(),
+        }
+        client.setQueryData<InfiniteData<MessagesPage, string>>(key, {
+          ...previous,
+          pages: previous.pages.map((page, index) =>
+            index === 0 ? { ...page, data: [...page.data, optimistic] } : page
+          ),
+        })
+      }
       return { previous }
     },
     onError: (_error, _payload, context) =>
@@ -964,15 +1154,6 @@ function ChatDetail({
       void client.invalidateQueries({ queryKey: key })
       void client.invalidateQueries({ queryKey: ["conversations"] })
     },
-  })
-  const statusMutation = useMutation({
-    mutationFn: (status: Status) =>
-      api(`/api/conversations/${conversationId}`, {
-        method: "PATCH",
-        body: JSON.stringify({ status }),
-      }),
-    onSuccess: () =>
-      void client.invalidateQueries({ queryKey: ["conversations"] }),
   })
   function submit(event: React.FormEvent) {
     event.preventDefault()
@@ -1004,9 +1185,9 @@ function ChatDetail({
           <select
             aria-label="Status"
             value={conversation.status}
-            disabled={statusMutation.isPending}
+            disabled={updating}
             onChange={(event) =>
-              statusMutation.mutate(event.target.value as Status)
+              onUpdate({ status: event.target.value as Status })
             }
             className="h-9 rounded-xl border border-zinc-200 bg-transparent px-2 text-[10px] font-bold outline-none dark:border-white/10"
           >
@@ -1022,8 +1203,32 @@ function ChatDetail({
           <MoreHorizontal className="size-4" />
         </button>
       </header>
-      <div className="scrollbar-subtle min-h-0 flex-1 overflow-y-auto bg-zinc-50/60 px-4 py-6 sm:px-8 dark:bg-black/10">
+      <div
+        ref={scrollRef}
+        className="scrollbar-subtle min-h-0 flex-1 overflow-y-auto bg-zinc-50/60 px-4 py-6 sm:px-8 dark:bg-black/10"
+      >
         <div className="mx-auto max-w-3xl">
+          {messages.hasNextPage && (
+            <div className="mb-4 text-center">
+              <button
+                disabled={messages.isFetchingNextPage}
+                onClick={async () => {
+                  const element = scrollRef.current
+                  const previousHeight = element?.scrollHeight ?? 0
+                  await messages.fetchNextPage()
+                  requestAnimationFrame(() => {
+                    if (element)
+                      element.scrollTop += element.scrollHeight - previousHeight
+                  })
+                }}
+                className="rounded-lg px-3 py-2 text-[10px] font-bold text-emerald-600 hover:bg-emerald-50 disabled:opacity-50 dark:hover:bg-emerald-500/10"
+              >
+                {messages.isFetchingNextPage
+                  ? "Memuat..."
+                  : "Muat pesan sebelumnya"}
+              </button>
+            </div>
+          )}
           <div className="mb-6 flex items-center gap-3 text-[10px] text-zinc-400">
             <span className="h-px flex-1 bg-zinc-200 dark:bg-white/10" />
             Hari ini
@@ -1035,7 +1240,7 @@ function ChatDetail({
             ) : messages.error ? (
               <ErrorState error={messages.error} />
             ) : (
-              (messages.data?.data ?? []).map((message) => (
+              mergeMessagePages(messages.data?.pages).map((message) => (
                 <MessageBubble
                   key={message.id}
                   message={message}
@@ -1423,7 +1628,6 @@ function SettingsForm({
       temperature: 0.3,
       autoReply: true,
       maxHistory: 10,
-      fallbackToAgent: true,
     }
   )
   const [saved, setSaved] = useState(false)
@@ -1542,7 +1746,7 @@ function SettingsForm({
                 <span>Kreatif</span>
               </div>
             </div>
-            <div className="mt-5 grid gap-3 sm:grid-cols-2">
+            <div className="mt-5 max-w-xs">
               <label className="text-[10px] font-bold">
                 Riwayat pesan
                 <input
@@ -1556,15 +1760,6 @@ function SettingsForm({
                   className="mt-2 h-9 w-full rounded-xl border border-zinc-200 bg-transparent px-3 text-xs font-normal dark:border-white/10"
                 />
               </label>
-              <div className="pt-1">
-                <Toggle
-                  label="Fallback ke agent"
-                  checked={form.fallbackToAgent}
-                  onChange={(value) =>
-                    setForm({ ...form, fallbackToAgent: value })
-                  }
-                />
-              </div>
             </div>
           </section>
           {save.error && (
@@ -1778,27 +1973,6 @@ function VolumeChart({ data }: { data: Analytics["volume"] }) {
         </AreaChart>
       </ResponsiveContainer>
     </div>
-  )
-}
-function Toggle({
-  label,
-  checked,
-  onChange,
-}: {
-  label: string
-  checked: boolean
-  onChange: (value: boolean) => void
-}) {
-  return (
-    <label className="flex items-center justify-between rounded-xl border p-3 text-sm font-medium">
-      <span>{label}</span>
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={(event) => onChange(event.target.checked)}
-        className="size-4 accent-emerald-500"
-      />
-    </label>
   )
 }
 function StatusBadge({ status }: { status: Status }) {

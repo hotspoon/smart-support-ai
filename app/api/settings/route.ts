@@ -5,13 +5,14 @@ import { apiError } from "@/lib/server/api"
 import { requireSession } from "@/lib/server/auth"
 import { getAIConfig } from "@/services/ai/customer-support"
 
-const settingSchema = z.object({
-  systemPrompt: z.string().min(20).max(10_000),
-  temperature: z.number().min(0).max(2),
-  autoReply: z.boolean(),
-  maxHistory: z.number().int().min(1).max(50).default(10),
-  fallbackToAgent: z.boolean().default(true),
-})
+const settingSchema = z
+  .object({
+    systemPrompt: z.string().min(20).max(10_000),
+    temperature: z.number().min(0).max(2),
+    autoReply: z.boolean(),
+    maxHistory: z.number().int().min(1).max(50).default(10),
+  })
+  .strict()
 
 export async function GET() {
   try {
@@ -23,7 +24,6 @@ export async function GET() {
         temperature: true,
         autoReply: true,
         maxHistory: true,
-        fallbackToAgent: true,
         updatedAt: true,
       },
     })
@@ -55,7 +55,6 @@ export async function PATCH(request: Request) {
         temperature: true,
         autoReply: true,
         maxHistory: true,
-        fallbackToAgent: true,
         updatedAt: true,
       },
     })

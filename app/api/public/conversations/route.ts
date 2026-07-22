@@ -10,6 +10,8 @@ import {
 import { enforceRateLimit } from "@/lib/server/rate-limit"
 import { processAIReply } from "@/services/chat/process-ai"
 
+export const maxDuration = 30
+
 const inputSchema = z.object({
   name: z.string().trim().min(2).max(100),
   email: z.string().trim().email().max(200),

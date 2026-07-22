@@ -28,6 +28,13 @@ export async function PATCH(
       })
       if (!agent) throw new ApiError(400, "Agent tidak valid")
     }
+    const tags = input.tags
+      ? [
+          ...new Map(
+            input.tags.map((tag) => [tag.toLocaleLowerCase(), tag])
+          ).values(),
+        ]
+      : undefined
     let resolutionSource = input.status ? null : conversation.resolutionSource
     if (input.status === "RESOLVED") {
       const adminMessage = await getDb().message.findFirst({
@@ -40,6 +47,7 @@ export async function PATCH(
       where: { id },
       data: {
         ...input,
+        tags,
         resolutionSource,
         resolvedAt:
           input.status === "RESOLVED"
@@ -52,6 +60,7 @@ export async function PATCH(
         id: true,
         status: true,
         assignedToId: true,
+        assignedTo: { select: { id: true, name: true } },
         tags: true,
         resolutionSource: true,
         resolvedAt: true,

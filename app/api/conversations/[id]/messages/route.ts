@@ -9,6 +9,11 @@ const sendSchema = z.object({
   clientMessageId: z.string().uuid(),
 })
 
+const paginationSchema = z.object({
+  cursor: z.string().min(1).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+})
+
 async function ownedConversation(id: string, workspaceId: string) {
   const value = await getDb().conversation.findFirst({
     where: { id, workspaceId },
@@ -25,20 +30,29 @@ export async function GET(
     const { workspaceId } = await requireSession()
     const { id } = await context.params
     await ownedConversation(id, workspaceId)
-    const cursor = new URL(request.url).searchParams.get("cursor")
+    const searchParams = new URL(request.url).searchParams
+    const { cursor, limit } = paginationSchema.parse({
+      cursor: searchParams.get("cursor") || undefined,
+      limit: searchParams.get("limit") || undefined,
+    })
     if (cursor) {
       const owned = await getDb().message.findFirst({
         where: { id: cursor, conversationId: id },
       })
       if (!owned) throw new ApiError(400, "Cursor tidak valid")
     }
-    const data = await getDb().message.findMany({
+    const rows = await getDb().message.findMany({
       where: { conversationId: id },
-      orderBy: { createdAt: "asc" },
-      take: 100,
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: limit + 1,
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
     })
-    return Response.json({ data })
+    const hasMore = rows.length > limit
+    const data = rows.slice(0, limit).reverse()
+    return Response.json({
+      data,
+      nextCursor: hasMore ? data[0]?.id : null,
+    })
   } catch (error) {
     return apiError(error)
   }

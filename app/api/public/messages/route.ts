@@ -11,30 +11,44 @@ import {
 import { enforceRateLimit } from "@/lib/server/rate-limit"
 import { processAIReply } from "@/services/chat/process-ai"
 
+export const maxDuration = 30
+
 const sendSchema = z.object({
   message: z.string().trim().min(1).max(5_000),
   clientMessageId: z.string().uuid(),
 })
 
+const paginationSchema = z.object({
+  cursor: z.string().min(1).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+})
+
 export async function GET(request: Request) {
   try {
     const conversation = await requirePublicConversation()
-    const cursor = new URL(request.url).searchParams.get("cursor")
+    const searchParams = new URL(request.url).searchParams
+    const { cursor, limit } = paginationSchema.parse({
+      cursor: searchParams.get("cursor") || undefined,
+      limit: searchParams.get("limit") || undefined,
+    })
     if (cursor) {
       const owned = await getDb().message.findFirst({
         where: { id: cursor, conversationId: conversation.id },
       })
       if (!owned) throw new ApiError(400, "Cursor tidak valid")
     }
-    const data = await getDb().message.findMany({
+    const rows = await getDb().message.findMany({
       where: { conversationId: conversation.id },
       select: { id: true, sender: true, content: true, createdAt: true },
-      orderBy: { createdAt: "asc" },
-      take: 100,
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: limit + 1,
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
     })
+    const hasMore = rows.length > limit
+    const data = rows.slice(0, limit).reverse()
     return Response.json({
       data,
+      nextCursor: hasMore ? data[0]?.id : null,
       conversation: {
         id: conversation.id,
         status: conversation.status,

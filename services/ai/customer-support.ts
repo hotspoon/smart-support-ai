@@ -54,11 +54,12 @@ export async function generateCustomerSupportReply(input: PromptInput) {
     )
   }
 
+  const requestTimeout = process.env.INTEGRATION_TEST === "true" ? 250 : 15_000
   const client = new OpenAI({
     apiKey: config.apiKey,
     baseURL: config.baseURL,
-    timeout: 30_000,
-    maxRetries: 2,
+    timeout: requestTimeout,
+    maxRetries: 1,
   })
   const knowledge = input.knowledge
     .map((item, index) => `${index + 1}. ${item.title}\n${item.content}`)
@@ -77,12 +78,18 @@ export async function generateCustomerSupportReply(input: PromptInput) {
     { role: "user", content: input.question },
   ]
 
-  const response = await client.chat.completions.create({
-    // Environment wins so a stale DB model cannot be sent to another provider.
-    model,
-    temperature: input.temperature ?? 0.3,
-    messages,
-  })
+  const response = await client.chat.completions.create(
+    {
+      // Environment wins so a stale DB model cannot be sent to another provider.
+      model,
+      temperature: input.temperature ?? 0.3,
+      messages,
+    },
+    {
+      // Keep database fallback work safely inside the route's 30 second budget.
+      signal: AbortSignal.timeout(Math.min(requestTimeout * 2 + 2_000, 25_000)),
+    }
+  )
   const content = response.choices[0]?.message.content?.trim()
   if (!content) throw new Error("Provider AI tidak mengembalikan jawaban")
 

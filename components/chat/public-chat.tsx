@@ -1,6 +1,10 @@
 "use client"
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQueryClient,
+} from "@tanstack/react-query"
 import {
   Bot,
   CheckCircle2,
@@ -12,7 +16,7 @@ import {
   ShieldCheck,
   Sparkles,
 } from "lucide-react"
-import { useState } from "react"
+import { useRef, useState } from "react"
 
 import { cn } from "@/lib/utils"
 
@@ -27,7 +31,24 @@ type Conversation = {
   status: "OPEN" | "WAITING" | "RESOLVED"
   customerName: string
 }
-type MessagesPayload = { data: Message[]; conversation: Conversation }
+type MessagesPayload = {
+  data: Message[]
+  nextCursor: string | null
+  conversation: Conversation
+}
+type SendPayload = { message: string; clientMessageId: string }
+
+function mergePages(pages: MessagesPayload[] | undefined) {
+  const unique = new Map<string, Message>()
+  for (const page of [...(pages ?? [])].reverse()) {
+    for (const message of page.data) unique.set(message.id, message)
+  }
+  return [...unique.values()].sort(
+    (left, right) =>
+      new Date(left.createdAt).getTime() -
+        new Date(right.createdAt).getTime() || left.id.localeCompare(right.id)
+  )
+}
 
 class RequestError extends Error {
   constructor(
@@ -56,30 +77,33 @@ async function request<T>(url: string, options?: RequestInit) {
 export function PublicChat() {
   const client = useQueryClient()
   const [draft, setDraft] = useState("")
-  const [retryMessage, setRetryMessage] = useState<string | null>(null)
-  const messages = useQuery({
+  const [retryMessage, setRetryMessage] = useState<SendPayload | null>(null)
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const messages = useInfiniteQuery({
     queryKey: ["public-messages"],
-    queryFn: () => request<MessagesPayload>("/api/public/messages"),
+    queryFn: ({ pageParam }) =>
+      request<MessagesPayload>(
+        `/api/public/messages?limit=50${pageParam ? `&cursor=${pageParam}` : ""}`
+      ),
+    initialPageParam: "",
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
     retry: false,
     refetchInterval: (query) => (query.state.data ? 3_000 : false),
   })
   const send = useMutation({
-    mutationFn: (message: string) =>
+    mutationFn: (payload: SendPayload) =>
       request<{ status: "answered" | "failed" | "pending" }>(
         "/api/public/messages",
         {
           method: "POST",
-          body: JSON.stringify({
-            message,
-            clientMessageId: crypto.randomUUID(),
-          }),
+          body: JSON.stringify(payload),
         }
       ),
-    onSuccess: (result) => {
-      setRetryMessage(result.status === "failed" ? retryMessage : null)
+    onSuccess: () => {
+      setRetryMessage(null)
       void client.invalidateQueries({ queryKey: ["public-messages"] })
     },
-    onError: () => setRetryMessage(retryMessage ?? draft),
+    onError: (_error, payload) => setRetryMessage(payload),
   })
 
   function submit(event: React.FormEvent) {
@@ -87,8 +111,8 @@ export function PublicChat() {
     const value = draft.trim()
     if (!value || send.isPending) return
     setDraft("")
-    setRetryMessage(value)
-    send.mutate(value)
+    setRetryMessage(null)
+    send.mutate({ message: value, clientMessageId: crypto.randomUUID() })
   }
 
   if (messages.isLoading) return <ChatLoading />
@@ -106,7 +130,7 @@ export function PublicChat() {
       />
     )
 
-  const conversation = messages.data.conversation
+  const conversation = messages.data.pages[0].conversation
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.14),_transparent_34%),linear-gradient(to_bottom_right,#fafafa,#f4f4f5)] p-3 sm:grid sm:place-items-center sm:p-6 dark:bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.13),_transparent_34%),linear-gradient(to_bottom_right,#09090b,#18181b)]">
       <section className="mx-auto flex h-[calc(100vh-1.5rem)] w-full max-w-3xl flex-col overflow-hidden rounded-3xl border bg-white shadow-2xl shadow-zinc-950/10 sm:h-[min(780px,calc(100vh-3rem))] dark:bg-zinc-900">
@@ -134,7 +158,10 @@ export function PublicChat() {
             {conversation.status}
           </span>
         </header>
-        <div className="scrollbar-subtle flex-1 space-y-4 overflow-y-auto bg-zinc-50/70 p-4 sm:p-6 dark:bg-zinc-950/40">
+        <div
+          ref={scrollRef}
+          className="scrollbar-subtle flex-1 space-y-4 overflow-y-auto bg-zinc-50/70 p-4 sm:p-6 dark:bg-zinc-950/40"
+        >
           <div className="mx-auto mb-6 max-w-md text-center">
             <div className="mx-auto grid size-12 place-items-center rounded-2xl bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
               <Sparkles className="size-5" />
@@ -147,7 +174,28 @@ export function PublicChat() {
               Jawaban AI menggunakan knowledge base Halo Shop.
             </p>
           </div>
-          {messages.data.data.map((message) => (
+          {messages.hasNextPage && (
+            <div className="text-center">
+              <button
+                disabled={messages.isFetchingNextPage}
+                onClick={async () => {
+                  const element = scrollRef.current
+                  const previousHeight = element?.scrollHeight ?? 0
+                  await messages.fetchNextPage()
+                  requestAnimationFrame(() => {
+                    if (element)
+                      element.scrollTop += element.scrollHeight - previousHeight
+                  })
+                }}
+                className="rounded-lg px-3 py-2 text-xs font-bold text-emerald-600 hover:bg-emerald-50 disabled:opacity-50 dark:hover:bg-emerald-500/10"
+              >
+                {messages.isFetchingNextPage
+                  ? "Memuat..."
+                  : "Muat pesan sebelumnya"}
+              </button>
+            </div>
+          )}
+          {mergePages(messages.data.pages).map((message) => (
             <CustomerBubble key={message.id} message={message} />
           ))}
           {send.isPending && (
@@ -169,15 +217,17 @@ export function PublicChat() {
               </button>
             </div>
           )}
-          {send.data?.status === "failed" && (
-            <div className="flex gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
-              <Clock3 className="mt-0.5 size-4 shrink-0" />
-              <span>
-                AI sedang tidak tersedia. Pesanmu sudah tersimpan dan masuk
-                antrean admin.
-              </span>
-            </div>
-          )}
+          {!send.isPending &&
+            (send.data?.status === "failed" ||
+              conversation.status === "OPEN") && (
+              <div className="flex gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
+                <Clock3 className="mt-0.5 size-4 shrink-0" />
+                <span>
+                  AI sedang tidak tersedia. Pesanmu sudah tersimpan dan masuk
+                  antrean admin.
+                </span>
+              </div>
+            )}
           {conversation.status === "RESOLVED" && (
             <div className="flex gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-200">
               <CheckCircle2 className="mt-0.5 size-4 shrink-0" />

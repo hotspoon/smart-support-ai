@@ -7,44 +7,7 @@ const connectionString = process.env.DATABASE_URL
 const workspaceSlug = process.env.DEFAULT_WORKSPACE_SLUG || "halo-shop"
 const model = process.env.AI_MODEL || "llama-3.3-70b-versatile"
 
-const articles = [
-  {
-    title: "Bagaimana cara mengajukan refund?",
-    category: "Pembayaran",
-    content:
-      "Refund diajukan melalui menu Pesanan dengan memilih pesanan terkait lalu Ajukan Refund. Setelah disetujui, dana diproses dalam 3–5 hari kerja.",
-  },
-  {
-    title: "Berapa lama waktu pengiriman?",
-    category: "Pengiriman",
-    content:
-      "Pengiriman reguler membutuhkan 2–5 hari kerja, tergantung lokasi tujuan dan kurir yang dipilih.",
-  },
-  {
-    title: "Apakah alamat pengiriman dapat diubah?",
-    category: "Pengiriman",
-    content:
-      "Alamat dapat diubah selama pesanan belum diproses oleh gudang. Hubungi admin jika tombol ubah alamat sudah tidak tersedia.",
-  },
-  {
-    title: "Bagaimana menggunakan voucher?",
-    category: "Promo",
-    content:
-      "Masukkan kode pada kolom Voucher saat checkout. Pastikan periode, minimum transaksi, dan produk yang dipilih sesuai syarat voucher.",
-  },
-  {
-    title: "Bagaimana mengubah data akun?",
-    category: "Akun",
-    content:
-      "Nama dan nomor telepon dapat diubah melalui Pengaturan Akun. Perubahan email membutuhkan verifikasi ulang.",
-  },
-  {
-    title: "Kapan jam operasional customer support?",
-    category: "Umum",
-    content:
-      "Customer support beroperasi Senin–Jumat pukul 08.00–17.00 WIB. Pesan di luar jam operasional akan ditindaklanjuti pada hari kerja berikutnya.",
-  },
-]
+const articles = []
 
 if (!connectionString) {
   console.error("DATABASE_URL belum diisi di .env")

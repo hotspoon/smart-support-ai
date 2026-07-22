@@ -33,10 +33,15 @@ model Workspace {
   id            String          @id @default(cuid())
   name          String
   slug          String          @unique
+  brandColor    String          @default("#10B981")
+  welcomeMessage String         @default("Ada yang bisa kami bantu?") @db.Text
+  businessHours String          @default("Senin–Jumat, 08.00–17.00 WIB")
+  onboardingCompletedAt DateTime?
   users         User[]
   conversations Conversation[]
   knowledgeBase KnowledgeBase[]
   promptSetting PromptSetting?
+  notifications Notification[]
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
 }
@@ -53,6 +58,7 @@ model User {
   assigned      Conversation[] @relation("AssignedAgent")
   sessions      Session[]
   accounts      Account[]
+  notifications Notification[]
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
 
@@ -118,14 +124,45 @@ model Conversation {
   tags             String[]
   publicTokenHash  String?            @unique
   lastMessageAt    DateTime           @default(now())
+  lastCustomerMessageAt DateTime      @default(now())
+  lastAgentReplyAt DateTime?
   resolutionSource ResolutionSource?
   messages         Message[]
+  feedback         ConversationFeedback?
+  notifications    Notification[]
   createdAt        DateTime           @default(now())
   updatedAt        DateTime           @updatedAt
   resolvedAt       DateTime?
 
   @@index([workspaceId, status, updatedAt])
   @@index([assignedToId])
+}
+
+model Notification {
+  id             String       @id @default(cuid())
+  workspaceId    String
+  workspace      Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  recipientId    String
+  recipient      User         @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  lastEventAt    DateTime     @default(now())
+  readAt         DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([recipientId, conversationId])
+  @@index([workspaceId, lastEventAt])
+  @@index([recipientId, readAt, lastEventAt])
+}
+
+model ConversationFeedback {
+  id             String       @id @default(cuid())
+  conversationId String       @unique
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  rating         Int
+  comment        String?      @db.Text
+  createdAt      DateTime     @default(now())
 }
 
 model Message {

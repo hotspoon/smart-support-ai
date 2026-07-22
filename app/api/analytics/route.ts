@@ -24,6 +24,10 @@ export async function GET(request: Request) {
       where: { workspaceId, createdAt: { gte: since } },
       include: { messages: { orderBy: { createdAt: "asc" } } },
     })
+    const feedback = await getDb().conversationFeedback.aggregate({
+      where: { conversation: { workspaceId }, createdAt: { gte: since } },
+      _avg: { rating: true }, _count: { rating: true },
+    })
     const today = jakartaDate.format(new Date())
     const todayRows = conversations.filter(
       (item) => jakartaDate.format(item.createdAt) === today
@@ -91,6 +95,8 @@ export async function GET(request: Request) {
         escalations: conversations.filter((item) =>
           item.messages.some((message) => message.sender === "ADMIN")
         ).length,
+        csatAverage: feedback._avg.rating ? Math.round(feedback._avg.rating * 10) / 10 : null,
+        csatResponses: feedback._count.rating,
       },
       volume: [...volumeMap.values()],
       topQuestions: [...topMap.entries()]

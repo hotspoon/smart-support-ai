@@ -90,6 +90,10 @@ exact-match dapat dijalankan dengan `pnpm db:cleanup:integration -- --confirm`.
 - `AI_PROVIDER`, `AI_API_KEY`, `AI_BASE_URL`, serta `AI_MODEL` telah diisi.
 - Jalankan `prisma migrate deploy`, typecheck, lint, build, integration test,
   `db:check`, dan `ai:test` sebelum deploy.
+- Pantau `GET /api/health` dengan layanan uptime eksternal dan periksa log Vercel
+  untuk kegagalan aplikasi. Endpoint ini tidak mengekspos secret atau detail database.
+- Gunakan `sslmode=verify-full` pada seluruh Neon connection string untuk
+  menghindari perubahan perilaku keamanan driver PostgreSQL berikutnya.
 
 ## Batas MVP
 

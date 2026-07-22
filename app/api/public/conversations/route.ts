@@ -8,6 +8,7 @@ import {
   setPublicTokenCookie,
 } from "@/lib/server/public-chat"
 import { enforceRateLimit } from "@/lib/server/rate-limit"
+import { notifyWorkspaceOfCustomerMessage } from "@/lib/server/notifications"
 import { processAIReply } from "@/services/chat/process-ai"
 
 export const maxDuration = 30
@@ -43,6 +44,7 @@ export async function POST(request: Request) {
         status: "OPEN",
         tags: [],
         publicTokenHash: hash,
+        lastCustomerMessageAt: new Date(),
         messages: {
           create: {
             sender: "USER",
@@ -53,6 +55,7 @@ export async function POST(request: Request) {
       },
       include: { messages: true },
     })
+    await notifyWorkspaceOfCustomerMessage({ workspaceId: workspace.id, conversationId: conversation.id, occurredAt: conversation.createdAt })
     await setPublicTokenCookie(token)
     const ai = await processAIReply(conversation.id)
     return Response.json(

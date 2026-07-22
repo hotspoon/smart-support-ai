@@ -69,6 +69,7 @@ type Conversation = {
   tags: string[]
   lastMessageAt: string
   assignedTo: { id: string; name: string } | null
+  needsAttention?: boolean
   messages: {
     content: string
     sender: "USER" | "AI" | "ADMIN"
@@ -139,6 +140,8 @@ type Setting = {
   autoReply: boolean
   maxHistory: number
 }
+type WorkspaceSetting = { name: string; slug: string; brandColor: string; welcomeMessage: string; businessHours: string; onboardingCompletedAt: string | null }
+type NotificationItem = { id: string; conversationId: string; lastEventAt: string; readAt: string | null; conversation: { customerName: string; subject: string | null } }
 
 async function api<T>(url: string, options?: RequestInit): Promise<T> {
   const response = await fetch(url, {
@@ -183,11 +186,14 @@ export function LiveSupportDesk({
 }) {
   const [view, setView] = useState<View>("dashboard")
   const [mobileNav, setMobileNav] = useState(false)
+  const [showNotifications, setShowNotifications] = useState(false)
   const { resolvedTheme, setTheme } = useTheme()
   const allowedNav = navItems.filter(
     (item) => !item.adminOnly || user.role === "ADMIN"
   )
   const sidebarAnalytics = useAnalytics("7d", user.role === "ADMIN")
+  const notifications = useQuery({ queryKey: ["notifications"], queryFn: () => api<{ data: NotificationItem[]; unread: number }>("/api/notifications"), refetchInterval: 10_000 })
+  const workspace = useQuery({ queryKey: ["workspace"], queryFn: () => api<{ data: WorkspaceSetting }>("/api/workspace"), enabled: user.role === "ADMIN" })
   const automationRate =
     sidebarAnalytics.data?.data.totals.aiResolutionRate ?? 0
 
@@ -321,11 +327,18 @@ export function LiveSupportDesk({
             </button>
             <button
               aria-label="Notifikasi"
+              onClick={() => setShowNotifications(!showNotifications)}
               className="relative grid size-9 place-items-center rounded-xl border border-zinc-200 text-zinc-500 hover:bg-zinc-50 dark:border-white/10 dark:hover:bg-white/5"
             >
               <Bell className="size-4" />
-              <span className="absolute top-2 right-2 size-1.5 rounded-full bg-rose-500 ring-2 ring-white dark:ring-zinc-950" />
+              {(notifications.data?.unread ?? 0) > 0 && <span className="absolute top-2 right-2 size-1.5 rounded-full bg-rose-500 ring-2 ring-white dark:ring-zinc-950" />}
             </button>
+            {showNotifications && (
+              <div className="absolute top-16 right-4 z-50 w-80 rounded-2xl border bg-white p-3 shadow-xl dark:bg-zinc-900">
+                <p className="px-2 pb-2 text-xs font-bold">Notifikasi</p>
+                {notifications.data?.data.length ? notifications.data.data.map((item) => <button key={item.id} onClick={() => { setView("inbox"); setShowNotifications(false); void api(`/api/notifications/${item.conversationId}/read`, { method: "POST" }).then(() => notifications.refetch()) }} className="block w-full rounded-xl p-2 text-left hover:bg-zinc-50 dark:hover:bg-white/5"><p className="text-xs font-bold">Pesan baru dari {item.conversation.customerName}</p><p className="mt-1 truncate text-[10px] text-zinc-500">{item.conversation.subject ?? "Percakapan customer"}</p></button>) : <p className="p-2 text-xs text-zinc-500">Belum ada notifikasi.</p>}
+              </div>
+            )}
             <button
               aria-label="Bantuan"
               className="grid size-9 place-items-center rounded-xl border border-zinc-200 text-zinc-500 hover:bg-zinc-50 dark:border-white/10 dark:hover:bg-white/5"
@@ -347,6 +360,7 @@ export function LiveSupportDesk({
           {view === "analytics" && user.role === "ADMIN" && <AnalyticsView />}
           {view === "settings" && user.role === "ADMIN" && <SettingsView />}
         </main>
+        {user.role === "ADMIN" && workspace.data?.data.onboardingCompletedAt === null && <OnboardingWizard initial={workspace.data.data} onComplete={() => void workspace.refetch()} />}
       </div>
     </div>
   )
@@ -678,13 +692,14 @@ function MetricCard({
 function InboxView() {
   const [query, setQuery] = useState("")
   const [status, setStatus] = useState<"" | Status>("")
+  const [needsAttention, setNeedsAttention] = useState(false)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [showDetail, setShowDetail] = useState(false)
   const conversations = useInfiniteQuery({
-    queryKey: ["conversations", query, status],
+    queryKey: ["conversations", query, status, needsAttention],
     queryFn: ({ pageParam }) =>
       api<ConversationPage>(
-        `/api/conversations?limit=30&query=${encodeURIComponent(query)}${status ? `&status=${status}` : ""}${pageParam ? `&cursor=${pageParam}` : ""}`
+        `/api/conversations?limit=30&query=${encodeURIComponent(query)}${status ? `&status=${status}` : ""}${needsAttention ? "&needsAttention=true" : ""}${pageParam ? `&cursor=${pageParam}` : ""}`
       ),
     initialPageParam: "",
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
@@ -792,10 +807,11 @@ function InboxView() {
             />
           </div>
           <div className="mt-3 flex gap-1 overflow-x-auto">
+            <button onClick={() => { setNeedsAttention(!needsAttention); setStatus("") }} className={cn("rounded-lg px-2.5 py-1.5 text-[10px] font-bold whitespace-nowrap", needsAttention ? "bg-amber-500 text-white" : "text-zinc-400 hover:bg-zinc-100 dark:hover:bg-white/5")}>Butuh respons</button>
             {(["", "OPEN", "WAITING", "RESOLVED"] as const).map((value) => (
               <button
                 key={value || "ALL"}
-                onClick={() => setStatus(value)}
+                onClick={() => { setStatus(value); setNeedsAttention(false) }}
                 className={cn(
                   "rounded-lg px-2.5 py-1.5 text-[10px] font-bold whitespace-nowrap",
                   status === value
@@ -829,6 +845,7 @@ function InboxView() {
                   onClick={() => {
                     setSelectedId(row.id)
                     setShowDetail(true)
+                    void api(`/api/notifications/${row.id}/read`, { method: "POST" }).then(() => void client.invalidateQueries({ queryKey: ["notifications"] }))
                   }}
                 />
               ))}
@@ -1088,6 +1105,7 @@ function ConversationItem({
             )}
           />
           <span className="text-[9px] font-semibold text-zinc-400">WEB</span>
+          {row.needsAttention && <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-700 dark:bg-amber-500/15 dark:text-amber-300">SLA</span>}
         </div>
       </div>
     </button>
@@ -1603,13 +1621,47 @@ function SettingsView() {
   if (settings.isLoading) return <Loading />
   if (settings.error) return <ErrorState error={settings.error} />
   return (
+    <div>
+    <WorkspaceSettings />
     <SettingsForm
       key={settings.data?.data?.systemPrompt ?? "empty"}
       initial={settings.data?.data ?? null}
       runtime={settings.data?.runtime}
       onSaved={() => void client.invalidateQueries({ queryKey: ["settings"] })}
     />
+    </div>
   )
+}
+
+function WorkspaceSettings() {
+  const client = useQueryClient()
+  const workspace = useQuery({ queryKey: ["workspace"], queryFn: () => api<{ data: WorkspaceSetting }>("/api/workspace") })
+  if (workspace.isLoading) return <Loading compact />
+  if (workspace.error || !workspace.data) return <ErrorState error={workspace.error as Error} />
+  return <WorkspaceForm initial={workspace.data.data} onSaved={() => void client.invalidateQueries({ queryKey: ["workspace"] })} />
+}
+
+function WorkspaceForm({ initial, onSaved, onboarding = false }: { initial: WorkspaceSetting; onSaved: () => void; onboarding?: boolean }) {
+  const [form, setForm] = useState({ name: initial.name, brandColor: initial.brandColor, welcomeMessage: initial.welcomeMessage, businessHours: initial.businessHours, addSamples: false })
+  const save = useMutation({ mutationFn: () => api("/api/workspace", { method: "PATCH", body: JSON.stringify({ ...form, completeOnboarding: onboarding }) }), onSuccess: onSaved })
+  return <form onSubmit={(event) => { event.preventDefault(); save.mutate() }} className={cn("mx-auto w-full max-w-[980px] p-4 sm:p-7", onboarding && "p-0")}>
+    {!onboarding && <div className="mb-5"><h2 className="font-heading text-2xl font-extrabold">Profil workspace</h2><p className="mt-1 text-xs text-zinc-500">Identitas ini terlihat oleh customer di halaman chat.</p></div>}
+    <section className="rounded-2xl border bg-white p-5 dark:bg-zinc-900/50">
+      <div className="grid gap-4 sm:grid-cols-2">
+        <label className="text-xs font-bold">Nama bisnis<input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} maxLength={100} className="mt-2 h-10 w-full rounded-xl border bg-transparent px-3 font-normal" /></label>
+        <label className="text-xs font-bold">Warna aksen<input value={form.brandColor} onChange={(event) => setForm({ ...form, brandColor: event.target.value })} pattern="#[0-9A-Fa-f]{6}" className="mt-2 h-10 w-full rounded-xl border bg-transparent px-3 font-normal" /></label>
+      </div>
+      <label className="mt-4 block text-xs font-bold">Pesan sambutan<textarea value={form.welcomeMessage} onChange={(event) => setForm({ ...form, welcomeMessage: event.target.value })} maxLength={500} className="mt-2 w-full rounded-xl border bg-transparent p-3 font-normal" /></label>
+      <label className="mt-4 block text-xs font-bold">Jam operasional<input value={form.businessHours} onChange={(event) => setForm({ ...form, businessHours: event.target.value })} maxLength={200} className="mt-2 h-10 w-full rounded-xl border bg-transparent px-3 font-normal" /></label>
+      {onboarding && <label className="mt-4 flex gap-2 text-xs"><input type="checkbox" checked={form.addSamples} onChange={(event) => setForm({ ...form, addSamples: event.target.checked })} /> Tambahkan tiga artikel knowledge base contoh</label>}
+      {save.error && <p className="mt-3 text-xs text-red-500">{save.error.message}</p>}
+      <button disabled={save.isPending} className="mt-5 rounded-xl bg-emerald-500 px-4 py-2 text-xs font-bold text-white disabled:opacity-50">{save.isPending ? "Menyimpan..." : onboarding ? "Selesaikan setup" : "Simpan profil"}</button>
+    </section>
+  </form>
+}
+
+function OnboardingWizard({ initial, onComplete }: { initial: WorkspaceSetting; onComplete: () => void }) {
+  return <div className="fixed inset-0 z-[60] grid place-items-center bg-zinc-950/50 p-4 backdrop-blur-sm"><div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-3xl bg-zinc-50 shadow-2xl dark:bg-zinc-950"><div className="p-6 pb-0"><p className="text-xs font-bold text-emerald-600">SETUP PERTAMA</p><h2 className="mt-1 font-heading text-2xl font-extrabold">Siapkan workspace-mu</h2><p className="mt-2 text-sm text-zinc-500">Atur identitas bisnis, lalu lanjutkan ke AI Settings untuk menyesuaikan tone jawaban. Link customer: <code className="rounded bg-zinc-200 px-1">/chat</code></p></div><WorkspaceForm initial={initial} onboarding onSaved={onComplete} /></div></div>
 }
 
 function SettingsForm({

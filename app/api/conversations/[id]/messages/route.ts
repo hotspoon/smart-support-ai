@@ -63,7 +63,7 @@ export async function POST(
   context: RouteContext<"/api/conversations/[id]/messages">
 ) {
   try {
-    const { workspaceId } = await requireSession()
+    const { workspaceId, user } = await requireSession()
     const { id } = await context.params
     await ownedConversation(id, workspaceId)
     const input = sendSchema.parse(await request.json())
@@ -98,7 +98,11 @@ export async function POST(
     }
     await getDb().conversation.update({
       where: { id },
-      data: { status: "WAITING", lastMessageAt: data.createdAt },
+      data: { status: "WAITING", lastMessageAt: data.createdAt, lastAgentReplyAt: data.createdAt },
+    })
+    await getDb().notification.updateMany({
+      where: { recipientId: user.id, conversationId: id, workspaceId },
+      data: { readAt: new Date() },
     })
     return Response.json({ data }, { status: 201 })
   } catch (error) {

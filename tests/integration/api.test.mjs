@@ -549,3 +549,37 @@ test("analytics memakai batas hari Asia/Jakarta", async () => {
     before.body.data.today.conversations + 1
   )
 })
+
+test("workspace, notifikasi, SLA, dan CSAT mengikuti lifecycle customer", async () => {
+  const workspace = await api("/api/workspace", {
+    method: "PATCH",
+    headers: { cookie: adminCookie, "content-type": "application/json" },
+    body: JSON.stringify({ name: "Integration Brand", brandColor: "#123ABC", welcomeMessage: "Selamat datang di integration", businessHours: "09.00–17.00 WIB", addSamples: true, completeOnboarding: true }),
+  })
+  assert.equal(workspace.response.status, 200, JSON.stringify(workspace.body))
+  assert.equal(workspace.body.data.onboardingCompletedAt !== null, true)
+
+  const started = await api("/api/public/conversations", {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-forwarded-for": "198.51.100.88" },
+    body: JSON.stringify({ name: "CSAT Customer", email: "csat@example.com", message: "Butuh bantuan", clientMessageId: randomUUID() }),
+  })
+  assert.equal(started.response.status, 201, JSON.stringify(started.body))
+  const conversationId = started.body.data.conversationId
+  const publicCookie = (started.response.headers.get("set-cookie") ?? "").split(";")[0]
+  const notices = await api("/api/notifications", { headers: { cookie: adminCookie } })
+  assert.ok(notices.body.data.some((item) => item.conversationId === conversationId))
+
+  await db.query(`update "Conversation" set "lastCustomerMessageAt" = now() - interval '16 minutes' where id = $1`, [conversationId])
+  const attention = await api("/api/conversations?needsAttention=true", { headers: { cookie: adminCookie } })
+  assert.ok(attention.body.data.some((item) => item.id === conversationId && item.needsAttention))
+
+  const resolved = await api(`/api/conversations/${conversationId}`, { method: "PATCH", headers: { cookie: adminCookie, "content-type": "application/json" }, body: JSON.stringify({ status: "RESOLVED" }) })
+  assert.equal(resolved.response.status, 200)
+  const invalid = await api("/api/public/feedback", { method: "POST", headers: { cookie: publicCookie, "content-type": "application/json" }, body: JSON.stringify({ rating: 6 }) })
+  assert.equal(invalid.response.status, 400)
+  const feedback = await api("/api/public/feedback", { method: "POST", headers: { cookie: publicCookie, "content-type": "application/json" }, body: JSON.stringify({ rating: 5, comment: "Bagus" }) })
+  assert.equal(feedback.response.status, 201, JSON.stringify(feedback.body))
+  const duplicate = await api("/api/public/feedback", { method: "POST", headers: { cookie: publicCookie, "content-type": "application/json" }, body: JSON.stringify({ rating: 5 }) })
+  assert.equal(duplicate.response.status, 409)
+})

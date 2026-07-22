@@ -30,6 +30,8 @@ type Conversation = {
   id: string
   status: "OPEN" | "WAITING" | "RESOLVED"
   customerName: string
+  workspace: { name: string; brandColor: string; welcomeMessage: string; businessHours: string }
+  feedbackSubmitted: boolean
 }
 type MessagesPayload = {
   data: Message[]
@@ -78,6 +80,8 @@ export function PublicChat() {
   const client = useQueryClient()
   const [draft, setDraft] = useState("")
   const [retryMessage, setRetryMessage] = useState<SendPayload | null>(null)
+  const [rating, setRating] = useState(0)
+  const [comment, setComment] = useState("")
   const scrollRef = useRef<HTMLDivElement>(null)
   const messages = useInfiniteQuery({
     queryKey: ["public-messages"],
@@ -105,6 +109,10 @@ export function PublicChat() {
     },
     onError: (_error, payload) => setRetryMessage(payload),
   })
+  const feedback = useMutation({
+    mutationFn: () => request("/api/public/feedback", { method: "POST", body: JSON.stringify({ rating, comment: comment.trim() || undefined }) }),
+    onSuccess: () => void client.invalidateQueries({ queryKey: ["public-messages"] }),
+  })
 
   function submit(event: React.FormEvent) {
     event.preventDefault()
@@ -131,16 +139,17 @@ export function PublicChat() {
     )
 
   const conversation = messages.data.pages[0].conversation
+  const workspace = conversation.workspace
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.14),_transparent_34%),linear-gradient(to_bottom_right,#fafafa,#f4f4f5)] p-3 sm:grid sm:place-items-center sm:p-6 dark:bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.13),_transparent_34%),linear-gradient(to_bottom_right,#09090b,#18181b)]">
       <section className="mx-auto flex h-[calc(100vh-1.5rem)] w-full max-w-3xl flex-col overflow-hidden rounded-3xl border bg-white shadow-2xl shadow-zinc-950/10 sm:h-[min(780px,calc(100vh-3rem))] dark:bg-zinc-900">
         <header className="flex items-center gap-3 border-b p-4 sm:p-5">
-          <div className="relative grid size-11 place-items-center rounded-2xl bg-emerald-500 text-white">
+          <div className="relative grid size-11 place-items-center rounded-2xl text-white" style={{ backgroundColor: workspace.brandColor }}>
             <Bot className="size-5" />
             <span className="absolute -right-0.5 -bottom-0.5 size-3 rounded-full border-2 border-white bg-emerald-400 dark:border-zinc-900" />
           </div>
           <div className="min-w-0 flex-1">
-            <h1 className="font-heading font-extrabold">Halo Shop Support</h1>
+            <h1 className="font-heading font-extrabold">{workspace.name} Support</h1>
             <p className="text-xs text-zinc-500">
               AI assistant · admin siap membantu jika perlu
             </p>
@@ -155,7 +164,7 @@ export function PublicChat() {
                   : "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300"
             )}
           >
-            {conversation.status}
+            {conversation.status === "RESOLVED" ? "Sudah selesai" : conversation.status === "WAITING" ? "Menunggu respons" : "Butuh respons"}
           </span>
         </header>
         <div
@@ -170,8 +179,7 @@ export function PublicChat() {
               Halo, {conversation.customerName}!
             </p>
             <p className="mt-1 text-xs leading-relaxed text-zinc-500">
-              Tanyakan pesanan, refund, pengiriman, atau informasi produk.
-              Jawaban AI menggunakan knowledge base Halo Shop.
+              {workspace.welcomeMessage} Jam operasional: {workspace.businessHours}.
             </p>
           </div>
           {messages.hasNextPage && (
@@ -237,6 +245,17 @@ export function PublicChat() {
               </span>
             </div>
           )}
+          {conversation.status === "RESOLVED" && !conversation.feedbackSubmitted && (
+            <div className="rounded-xl border bg-white p-4 text-center dark:bg-zinc-900">
+              <p className="font-bold">Bagaimana pengalamanmu?</p>
+              <div className="mt-3 flex justify-center gap-2">
+                {[1, 2, 3, 4, 5].map((value) => <button key={value} onClick={() => setRating(value)} className={cn("rounded-lg px-3 py-2 text-lg", rating >= value ? "bg-amber-100 text-amber-600" : "bg-zinc-100 text-zinc-400")}>★</button>)}
+              </div>
+              <textarea value={comment} onChange={(event) => setComment(event.target.value)} maxLength={1000} placeholder="Komentar (opsional)" className="mt-3 w-full rounded-lg border p-2 text-sm" />
+              <button disabled={!rating || feedback.isPending} onClick={() => feedback.mutate()} className="mt-2 rounded-lg bg-emerald-500 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">Kirim penilaian</button>
+              {feedback.error && <p className="mt-2 text-xs text-red-600">{feedback.error.message}</p>}
+            </div>
+          )}
         </div>
         <form
           onSubmit={submit}
@@ -297,7 +316,7 @@ function StartChat({ onStarted }: { onStarted: () => void }) {
             Ada yang bisa dibantu?
           </h1>
           <p className="mt-2 text-sm text-zinc-500">
-            Mulai chat dengan customer support Halo Shop.
+            Mulai chat dengan customer support kami.
           </p>
         </div>
         <form

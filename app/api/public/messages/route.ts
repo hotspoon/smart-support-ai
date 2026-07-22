@@ -9,6 +9,7 @@ import {
   setPublicTokenCookie,
 } from "@/lib/server/public-chat"
 import { enforceRateLimit } from "@/lib/server/rate-limit"
+import { notifyWorkspaceOfCustomerMessage } from "@/lib/server/notifications"
 import { processAIReply } from "@/services/chat/process-ai"
 
 export const maxDuration = 30
@@ -46,6 +47,10 @@ export async function GET(request: Request) {
     })
     const hasMore = rows.length > limit
     const data = rows.slice(0, limit).reverse()
+    const [workspace, feedback] = await Promise.all([
+      getDb().workspace.findUniqueOrThrow({ where: { id: conversation.workspaceId }, select: { name: true, brandColor: true, welcomeMessage: true, businessHours: true } }),
+      getDb().conversationFeedback.findUnique({ where: { conversationId: conversation.id }, select: { id: true } }),
+    ])
     return Response.json({
       data,
       nextCursor: hasMore ? data[0]?.id : null,
@@ -53,6 +58,8 @@ export async function GET(request: Request) {
         id: conversation.id,
         status: conversation.status,
         customerName: conversation.customerName,
+        workspace,
+        feedbackSubmitted: Boolean(feedback),
       },
     })
   } catch (error) {
@@ -130,8 +137,9 @@ export async function POST(request: Request) {
     }
     await getDb().conversation.update({
       where: { id: conversation.id },
-      data: { status: "OPEN", lastMessageAt: message.createdAt },
+      data: { status: "OPEN", lastMessageAt: message.createdAt, lastCustomerMessageAt: message.createdAt },
     })
+    await notifyWorkspaceOfCustomerMessage({ workspaceId: conversation.workspaceId, conversationId: conversation.id, occurredAt: message.createdAt })
     const ai = await processAIReply(conversation.id)
     return Response.json({
       data: message,

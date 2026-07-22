@@ -17,7 +17,6 @@ import { authClient } from "@/lib/auth-client"
 export default function LoginPage() {
   const router = useRouter()
   const [showPassword, setShowPassword] = useState(false)
-  const [register, setRegister] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
 
@@ -30,12 +29,10 @@ export default function LoginPage() {
       email: String(form.get("email")),
       password: String(form.get("password")),
     }
-    const result = register
-      ? await authClient.signUp.email({
-          ...credentials,
-          name: String(form.get("name")),
-        })
-      : await authClient.signIn.email({ ...credentials, rememberMe: true })
+    const result = await authClient.signIn.email({
+      ...credentials,
+      rememberMe: true,
+    })
     setLoading(false)
     if (result.error)
       return setError(result.error.message ?? "Email atau password tidak valid")
@@ -91,12 +88,10 @@ export default function LoginPage() {
             Admin workspace
           </p>
           <h2 className="mt-3 font-heading text-3xl font-extrabold tracking-[-.035em]">
-            {register ? "Buat admin pertama" : "Selamat datang kembali"}
+            Selamat datang kembali
           </h2>
           <p className="mt-2 text-xs text-zinc-500">
-            {register
-              ? "Siapkan akun pemilik workspace SahutAja."
-              : "Masuk untuk mengelola percakapan pelanggan."}
+            Masuk untuk mengelola percakapan pelanggan.
           </p>
           {error && (
             <div className="mt-5 rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700">
@@ -104,17 +99,6 @@ export default function LoginPage() {
             </div>
           )}
           <form onSubmit={submit} className="mt-8 space-y-5">
-            {register && (
-              <label className="block">
-                <span className="text-[11px] font-bold">Nama lengkap</span>
-                <input
-                  name="name"
-                  required
-                  placeholder="Faris Admin"
-                  className="mt-2 h-11 w-full rounded-xl border border-zinc-200 bg-white px-3 text-xs transition outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-500/10"
-                />
-              </label>
-            )}
             <label className="block">
               <span className="text-[11px] font-bold">Email</span>
               <input
@@ -126,15 +110,7 @@ export default function LoginPage() {
               />
             </label>
             <label className="block">
-              <div className="flex justify-between">
-                <span className="text-[11px] font-bold">Password</span>
-                <button
-                  type="button"
-                  className="text-[10px] font-semibold text-emerald-600"
-                >
-                  Lupa password?
-                </button>
-              </div>
+              <span className="text-[11px] font-bold">Password</span>
               <div className="relative mt-2">
                 <input
                   name="password"
@@ -162,25 +138,10 @@ export default function LoginPage() {
               disabled={loading}
               className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#0c6b42] text-xs font-bold text-white shadow-lg shadow-emerald-900/15 hover:bg-[#075c38] disabled:opacity-60"
             >
-              {loading
-                ? "Memverifikasi..."
-                : register
-                  ? "Buat akun admin"
-                  : "Masuk ke workspace"}
+              {loading ? "Memverifikasi..." : "Masuk ke workspace"}
               <ArrowRight className="size-4" />
             </button>
           </form>
-          <button
-            onClick={() => {
-              setRegister(!register)
-              setError("")
-            }}
-            className="mt-5 w-full text-center text-[10px] font-semibold text-zinc-500 hover:text-emerald-600"
-          >
-            {register
-              ? "Sudah punya akun? Masuk"
-              : "Setup pertama? Buat akun admin"}
-          </button>
           <div className="mt-7 flex items-center justify-center gap-2 text-[10px] text-zinc-400">
             <ShieldCheck className="size-3.5 text-emerald-500" />
             Sesi masuk terenkripsi

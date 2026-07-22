@@ -5,8 +5,8 @@ import { QueryProvider } from "@/components/query-provider"
 import { ThemeProvider } from "@/components/theme-provider"
 
 export const metadata: Metadata = {
-  title: "HaloDesk — AI Customer Support",
-  description: "Customer support workspace powered by AI.",
+  title: "SahutAja — AI Customer Service",
+  description: "Setiap pelanggan pasti tersahut.",
 }
 
 export default function RootLayout({

@@ -1,12 +1,12 @@
 "use client"
 
 import { useState } from "react"
+import Image from "next/image"
 import {
   ArrowRight,
   CheckCircle2,
   Eye,
   EyeOff,
-  MessageCircle,
   ShieldCheck,
   Sparkles,
 } from "lucide-react"
@@ -48,18 +48,7 @@ export default function LoginPage() {
       <section className="relative hidden overflow-hidden bg-zinc-950 p-12 text-white lg:flex lg:flex-col">
         <div className="absolute top-20 -left-24 size-80 rounded-full bg-emerald-500/15 blur-3xl" />
         <div className="absolute right-0 -bottom-24 size-96 rounded-full bg-violet-500/10 blur-3xl" />
-        <div className="relative flex items-center gap-3">
-          <div className="relative grid size-10 place-items-center rounded-xl bg-emerald-500">
-            <MessageCircle className="size-5 fill-white" />
-            <span className="absolute -top-0.5 -right-0.5 size-2.5 rounded-full border-2 border-zinc-950 bg-amber-400" />
-          </div>
-          <div>
-            <p className="font-heading text-lg font-extrabold">HaloDesk</p>
-            <p className="text-[9px] font-bold tracking-[.2em] text-zinc-500 uppercase">
-              AI Support
-            </p>
-          </div>
-        </div>
+        <Image src="/sahutaja_logo.png" alt="SahutAja AI Customer Service" width={352} height={192} priority className="h-auto w-48 object-contain object-left" />
         <div className="relative my-auto max-w-lg">
           <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-[10px] font-bold text-emerald-400">
             <Sparkles className="size-3" />
@@ -92,17 +81,12 @@ export default function LoginPage() {
           </div>
         </div>
         <p className="relative text-[10px] text-zinc-600">
-          © 2026 HaloDesk. Built for modern support teams.
+          © 2026 SahutAja. Setiap pelanggan pasti tersahut.
         </p>
       </section>
       <section className="flex items-center justify-center p-6 sm:p-12">
         <div className="w-full max-w-[400px]">
-          <div className="mb-10 flex items-center gap-3 lg:hidden">
-            <div className="grid size-9 place-items-center rounded-xl bg-emerald-500 text-white">
-              <MessageCircle className="size-[18px] fill-white" />
-            </div>
-            <p className="font-heading text-lg font-extrabold">HaloDesk</p>
-          </div>
+          <Image src="/sahutaja_logo.png" alt="SahutAja AI Customer Service" width={352} height={192} priority className="mb-10 h-auto w-44 object-contain object-left lg:hidden" />
           <p className="text-[10px] font-bold tracking-[.18em] text-emerald-600 uppercase">
             Admin workspace
           </p>
@@ -111,7 +95,7 @@ export default function LoginPage() {
           </h2>
           <p className="mt-2 text-xs text-zinc-500">
             {register
-              ? "Siapkan akun pemilik workspace HaloDesk."
+              ? "Siapkan akun pemilik workspace SahutAja."
               : "Masuk untuk mengelola percakapan pelanggan."}
           </p>
           {error && (
@@ -137,7 +121,7 @@ export default function LoginPage() {
                 name="email"
                 type="email"
                 required
-                placeholder="admin@halodesk.id"
+                placeholder="admin@sahutaja.id"
                 className="mt-2 h-11 w-full rounded-xl border border-zinc-200 bg-white px-3 text-xs transition outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-500/10 dark:border-white/10 dark:bg-white/5"
               />
             </label>

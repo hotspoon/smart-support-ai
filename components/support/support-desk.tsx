@@ -186,7 +186,7 @@ function AppSidebar({
           <LogoMark />
           <div>
             <p className="font-heading text-[17px] font-extrabold tracking-tight">
-              HaloDesk
+              SahutAja
             </p>
             <p className="text-[10px] font-semibold tracking-[.18em] text-zinc-400 uppercase">
               AI Support
@@ -1448,7 +1448,7 @@ function SettingsView() {
             <label className="mt-5 block">
               <span className="text-[10px] font-bold">System prompt</span>
               <textarea
-                defaultValue="Kamu adalah customer support HaloShop yang ramah, ringkas, dan solutif. Jawab hanya berdasarkan knowledge base yang tersedia. Jika informasi tidak cukup atau pelanggan meminta tindakan pada akun, eskalasikan ke admin. Gunakan Bahasa Indonesia yang natural."
+                defaultValue="Kamu adalah customer support SahutAja yang ramah, ringkas, dan solutif. Jawab hanya berdasarkan knowledge base yang tersedia. Jika informasi tidak cukup atau pelanggan meminta tindakan pada akun, eskalasikan ke admin. Gunakan Bahasa Indonesia yang natural."
                 rows={8}
                 className="mt-2 w-full resize-none rounded-xl border border-zinc-200 bg-zinc-50 p-3 text-xs leading-relaxed outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-500/10 dark:border-white/10 dark:bg-white/5"
               />

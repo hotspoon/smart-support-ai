@@ -1,6 +1,6 @@
-# HaloDesk
+# SahutAja
 
-AI-first customer support workspace yang terinspirasi pola kerja Intercom dan Zendesk. Dashboard admin, public customer chat, Neon, Better Auth, dan Groq sudah terhubung sebagai satu alur live.
+AI-first customer service workspace. SahutAja menyatukan dashboard admin, public customer chat, Neon, Better Auth, dan Groq dalam satu alur live.
 
 ## Keputusan arsitektur
 

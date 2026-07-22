@@ -37,7 +37,13 @@ function isTypingTarget(target: EventTarget | null) {
 export function shouldToggleTheme(
   event: Pick<
     KeyboardEvent,
-    "defaultPrevented" | "repeat" | "metaKey" | "ctrlKey" | "altKey" | "key" | "target"
+    | "defaultPrevented"
+    | "repeat"
+    | "metaKey"
+    | "ctrlKey"
+    | "altKey"
+    | "key"
+    | "target"
   >
 ) {
   if (event.defaultPrevented || event.repeat) return false

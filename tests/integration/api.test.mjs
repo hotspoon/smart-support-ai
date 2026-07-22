@@ -99,7 +99,7 @@ function cookieFrom(response) {
 async function signUp(name, email) {
   const { response, body } = await api("/api/auth/sign-up/email", {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", origin },
     body: JSON.stringify({ name, email, password: "IntegrationPass123!" }),
   })
   assert.equal(response.status, 200, JSON.stringify(body))
@@ -114,7 +114,7 @@ async function createConversation(workspaceId, values = {}) {
       (id, "workspaceId", "customerName", "customerEmail", channel, status,
        subject, tags, "lastMessageAt", "createdAt", "updatedAt")
      values ($1, $2, $3, $4, 'WEB', $5::"ConversationStatus", $6,
-       $7::text[], $8, $8, $8)`,
+       $7::text[], $8::timestamptz, $8::timestamptz, $8::timestamptz)`,
     [
       id,
       workspaceId,
@@ -123,7 +123,7 @@ async function createConversation(workspaceId, values = {}) {
       values.status ?? "OPEN",
       values.subject ?? "Integration subject",
       values.tags ?? [],
-      now,
+      now.toISOString(),
     ]
   )
   return id
@@ -525,12 +525,19 @@ test("analytics memakai batas hari Asia/Jakarta", async () => {
   const before = await api("/api/analytics?range=7d", {
     headers: { cookie: adminCookie },
   })
-  const jakartaDate = new Intl.DateTimeFormat("en-CA", {
+  const jakartaDateFormatter = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Jakarta",
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
-  }).format(new Date())
+  })
+  const parts = Object.fromEntries(
+    jakartaDateFormatter
+      .formatToParts(new Date())
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, part.value])
+  )
+  const jakartaDate = `${parts.year}-${parts.month}-${parts.day}`
   const startUtc = new Date(`${jakartaDate}T00:30:00+07:00`)
   const previousUtc = new Date(startUtc.getTime() - 60 * 60 * 1000)
   await createConversation(primaryWorkspaceId, {

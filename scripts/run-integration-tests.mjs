@@ -28,6 +28,8 @@ if (
 
 const port = process.env.INTEGRATION_PORT ?? "3100"
 const aiPort = process.env.INTEGRATION_AI_PORT ?? "3101"
+const migrationUrl = new URL(testUrl)
+migrationUrl.hostname = migrationUrl.hostname.replace(/-pooler(?=\.)/, "")
 const environment = {
   ...process.env,
   DATABASE_URL: testUrl,
@@ -48,16 +50,19 @@ const environment = {
   INTEGRATION_AI_PORT: aiPort,
 }
 
-function run(command, args) {
+function run(command, args, env = environment) {
   const result = spawnSync(command, args, {
     cwd: process.cwd(),
-    env: environment,
+    env,
     stdio: "inherit",
   })
   if (result.status !== 0) process.exit(result.status ?? 1)
 }
 
-run("./node_modules/.bin/prisma", ["migrate", "deploy"])
+run("./node_modules/.bin/prisma", ["migrate", "deploy"], {
+  ...environment,
+  DATABASE_URL: migrationUrl.toString(),
+})
 run("./node_modules/.bin/next", ["build"])
 run(process.execPath, [
   "--test",

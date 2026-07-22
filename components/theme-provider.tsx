@@ -22,7 +22,7 @@ function ThemeProvider({
 }
 
 function isTypingTarget(target: EventTarget | null) {
-  if (!(target instanceof HTMLElement)) {
+  if (typeof HTMLElement === "undefined" || !(target instanceof HTMLElement)) {
     return false
   }
 
@@ -34,26 +34,25 @@ function isTypingTarget(target: EventTarget | null) {
   )
 }
 
+export function shouldToggleTheme(
+  event: Pick<
+    KeyboardEvent,
+    "defaultPrevented" | "repeat" | "metaKey" | "ctrlKey" | "altKey" | "key" | "target"
+  >
+) {
+  if (event.defaultPrevented || event.repeat) return false
+  if (event.metaKey || event.ctrlKey || event.altKey) return false
+  if (typeof event.key !== "string" || event.key.toLowerCase() !== "d")
+    return false
+  return !isTypingTarget(event.target)
+}
+
 function ThemeHotkey() {
   const { resolvedTheme, setTheme } = useTheme()
 
   React.useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
-      if (event.defaultPrevented || event.repeat) {
-        return
-      }
-
-      if (event.metaKey || event.ctrlKey || event.altKey) {
-        return
-      }
-
-      if (event.key.toLowerCase() !== "d") {
-        return
-      }
-
-      if (isTypingTarget(event.target)) {
-        return
-      }
+      if (!shouldToggleTheme(event)) return
 
       setTheme(resolvedTheme === "dark" ? "light" : "dark")
     }

@@ -5,12 +5,22 @@ import { apiError } from "@/lib/server/api"
 import { requireSession } from "@/lib/server/auth"
 
 const querySchema = z.object({ range: z.enum(["7d", "30d"]).default("7d") })
-const jakartaDate = new Intl.DateTimeFormat("en-CA", {
+const jakartaDateFormatter = new Intl.DateTimeFormat("en-CA", {
   timeZone: "Asia/Jakarta",
   year: "numeric",
   month: "2-digit",
   day: "2-digit",
 })
+
+function jakartaDate(value: Date) {
+  const parts = Object.fromEntries(
+    jakartaDateFormatter
+      .formatToParts(value)
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, part.value])
+  )
+  return `${parts.year}-${parts.month}-${parts.day}`
+}
 
 export async function GET(request: Request) {
   try {
@@ -28,9 +38,9 @@ export async function GET(request: Request) {
       where: { conversation: { workspaceId }, createdAt: { gte: since } },
       _avg: { rating: true }, _count: { rating: true },
     })
-    const today = jakartaDate.format(new Date())
+    const today = jakartaDate(new Date())
     const todayRows = conversations.filter(
-      (item) => jakartaDate.format(item.createdAt) === today
+      (item) => jakartaDate(item.createdAt) === today
     )
     const resolved = conversations.filter((item) => item.status === "RESOLVED")
     const responseTimes = conversations.flatMap((item) => {
@@ -52,13 +62,13 @@ export async function GET(request: Request) {
       { date: string; conversations: number; resolved: number }
     >()
     for (let offset = days - 1; offset >= 0; offset--) {
-      const date = jakartaDate.format(
+      const date = jakartaDate(
         new Date(Date.now() - offset * 86_400_000)
       )
       volumeMap.set(date, { date, conversations: 0, resolved: 0 })
     }
     for (const item of conversations) {
-      const bucket = volumeMap.get(jakartaDate.format(item.createdAt))
+      const bucket = volumeMap.get(jakartaDate(item.createdAt))
       if (bucket) {
         bucket.conversations++
         if (item.status === "RESOLVED") bucket.resolved++

@@ -9,5 +9,5 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!login|chat|api|_next/static|_next/image|favicon.ico).*)"],
+  matcher: ["/dashboard/:path*"],
 }

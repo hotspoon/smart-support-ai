@@ -39,7 +39,7 @@ export default function LoginPage() {
     setLoading(false)
     if (result.error)
       return setError(result.error.message ?? "Email atau password tidak valid")
-    router.push("/")
+    router.push("/dashboard")
     router.refresh()
   }
 
@@ -52,7 +52,7 @@ export default function LoginPage() {
         <div className="relative my-auto max-w-lg">
           <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-[10px] font-bold text-emerald-400">
             <Sparkles className="size-3" />
-            AI-FIRST CUSTOMER SUPPORT
+            CUSTOMER SERVICE YANG LEBIH SIGAP
           </span>
           <h1 className="mt-7 font-heading text-5xl leading-[1.08] font-extrabold tracking-[-.04em]">
             Support pelanggan,
@@ -60,15 +60,15 @@ export default function LoginPage() {
             <span className="text-emerald-400">tanpa kewalahan.</span>
           </h1>
           <p className="mt-5 max-w-md text-sm leading-7 text-zinc-400">
-            Satu workspace untuk percakapan, knowledge base, dan AI agent yang
-            bekerja 24/7 bersama timmu.
+            Satu tempat untuk merapikan percakapan, menyimpan jawaban bisnis,
+            dan membantu tim menangani pelanggan tanpa kehilangan konteks.
           </p>
           <div className="mt-9 grid gap-3 sm:grid-cols-2">
             {[
-              "82% resolusi otomatis",
-              "Respons rata-rata 2.8 detik",
-              "Semua channel terpusat",
-              "Kontrol penuh untuk admin",
+              "Jawaban dari knowledge base",
+              "Inbox percakapan terpusat",
+              "Bisa diambil alih admin",
+              "Riwayat percakapan tersimpan",
             ].map((item) => (
               <div
                 key={item}
@@ -183,7 +183,7 @@ export default function LoginPage() {
           </button>
           <div className="mt-7 flex items-center justify-center gap-2 text-[10px] text-zinc-400">
             <ShieldCheck className="size-3.5 text-emerald-500" />
-            Dilindungi dengan encrypted session
+            Sesi masuk terenkripsi
           </div>
         </div>
       </section>

@@ -31,7 +31,8 @@ pnpm db:setup
 pnpm dev
 ```
 
-Buka `http://localhost:3000` untuk dashboard admin dan `http://localhost:3000/chat` untuk customer chat.
+Buka `http://localhost:3000` untuk landing page, `http://localhost:3000/dashboard`
+untuk dashboard admin, dan `http://localhost:3000/chat` untuk customer chat.
 
 ## Menghubungkan Neon
 

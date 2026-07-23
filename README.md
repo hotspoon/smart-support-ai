@@ -53,7 +53,8 @@ Isi `AI_PROVIDER=groq`, `AI_API_KEY`, `AI_BASE_URL=https://api.groq.com/openai/v
 
 - Public: `POST /api/public/conversations`, `GET/POST /api/public/messages`.
 - Inbox: `GET /api/conversations`, `PATCH /api/conversations/:id`, `GET/POST /api/conversations/:id/messages`.
-- Workspace: `GET /api/agents`.
+- Workspace: `GET /api/agents`; admin dapat membuat agent melalui
+  `POST /api/agents` dan mereset password agent melalui `PATCH /api/agents`.
 - Admin: `GET/POST/PATCH/DELETE /api/kb`, `GET/PATCH /api/settings`, dan `GET /api/analytics`.
 
 Semua API admin memvalidasi session Better Auth melalui database. Role `AGENT` hanya dapat mengakses inbox dan pesan; KB, settings, serta analytics memerlukan `ADMIN`.

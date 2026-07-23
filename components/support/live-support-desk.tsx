@@ -23,6 +23,7 @@ import {
   Clock3,
   FileText,
   Inbox,
+  KeyRound,
   LayoutDashboard,
   LoaderCircle,
   LogOut,
@@ -39,6 +40,8 @@ import {
   SidebarClose,
   Sparkles,
   Trash2,
+  UserPlus,
+  UsersRound,
   WandSparkles,
   X,
   Zap,
@@ -59,7 +62,13 @@ import {
 import { authClient } from "@/lib/auth-client"
 import { cn } from "@/lib/utils"
 
-type View = "dashboard" | "inbox" | "knowledge" | "analytics" | "settings"
+type View =
+  | "dashboard"
+  | "inbox"
+  | "knowledge"
+  | "analytics"
+  | "team"
+  | "settings"
 type Status = "OPEN" | "WAITING" | "RESOLVED"
 type Conversation = {
   id: string
@@ -80,8 +89,10 @@ type Conversation = {
 type Agent = {
   id: string
   name: string
+  email?: string
   role: "ADMIN" | "AGENT"
   image: string | null
+  createdAt?: string
 }
 type ConversationPage = {
   data: Conversation[]
@@ -182,6 +193,7 @@ const navItems: {
   { id: "inbox", label: "Inbox", icon: Inbox },
   { id: "knowledge", label: "Knowledge", icon: BookOpen, adminOnly: true },
   { id: "analytics", label: "Analytics", icon: BarChart3, adminOnly: true },
+  { id: "team", label: "Tim", icon: UsersRound, adminOnly: true },
   { id: "settings", label: "AI Settings", icon: Settings, adminOnly: true },
 ]
 
@@ -190,6 +202,7 @@ const pageMeta: Record<View, { eyebrow: string; title: string }> = {
   inbox: { eyebrow: "Workspace", title: "Inbox" },
   knowledge: { eyebrow: "AI resources", title: "Knowledge base" },
   analytics: { eyebrow: "Insights", title: "Analytics" },
+  team: { eyebrow: "Workspace", title: "Tim" },
   settings: { eyebrow: "Workspace", title: "AI settings" },
 }
 
@@ -201,6 +214,8 @@ export function LiveSupportDesk({
   const [view, setView] = useState<View>("dashboard")
   const [mobileNav, setMobileNav] = useState(false)
   const [showNotifications, setShowNotifications] = useState(false)
+  const [signingOut, setSigningOut] = useState(false)
+  const [signOutError, setSignOutError] = useState("")
   const { resolvedTheme, setTheme } = useTheme()
   const allowedNav = navItems.filter(
     (item) => !item.adminOnly || user.role === "ADMIN"
@@ -223,6 +238,24 @@ export function LiveSupportDesk({
   function navigate(next: View) {
     setView(next)
     setMobileNav(false)
+  }
+
+  async function handleSignOut() {
+    if (signingOut) return
+    setSigningOut(true)
+    setSignOutError("")
+    try {
+      const result = await authClient.signOut()
+      if (result.error) {
+        setSignOutError("Gagal keluar. Coba lagi.")
+        setSigningOut(false)
+        return
+      }
+      location.replace("/login")
+    } catch {
+      setSignOutError("Gagal keluar. Periksa koneksi internet.")
+      setSigningOut(false)
+    }
   }
 
   return (
@@ -255,7 +288,7 @@ export function LiveSupportDesk({
             Workspace
           </p>
           {allowedNav
-            .filter((item) => item.id !== "settings")
+            .filter((item) => item.id !== "settings" && item.id !== "team")
             .map((item) => (
               <NavButton
                 key={item.id}
@@ -269,6 +302,11 @@ export function LiveSupportDesk({
               <p className="mt-7 mb-2 px-3 text-[10px] font-bold tracking-[.16em] text-zinc-400 uppercase">
                 Manage
               </p>
+              <NavButton
+                item={navItems.find((item) => item.id === "team")!}
+                active={view === "team"}
+                onClick={() => navigate("team")}
+              />
               <NavButton
                 item={navItems.find((item) => item.id === "settings")!}
                 active={view === "settings"}
@@ -308,15 +346,25 @@ export function LiveSupportDesk({
               </p>
             </div>
             <button
-              aria-label="Logout"
-              onClick={() =>
-                void authClient.signOut().then(() => location.assign("/login"))
-              }
-              className="rounded-lg p-2 text-zinc-400 hover:bg-zinc-100 dark:hover:bg-white/5"
+              type="button"
+              aria-label={signingOut ? "Sedang keluar" : "Keluar"}
+              title={signingOut ? "Sedang keluar..." : "Keluar"}
+              disabled={signingOut}
+              onClick={() => void handleSignOut()}
+              className="rounded-lg p-2 text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-700 disabled:cursor-wait disabled:opacity-60 dark:hover:bg-white/5 dark:hover:text-zinc-200"
             >
-              <LogOut className="size-4" />
+              {signingOut ? (
+                <LoaderCircle className="size-4 animate-spin" />
+              ) : (
+                <LogOut className="size-4" />
+              )}
             </button>
           </div>
+          {signOutError && (
+            <p role="alert" className="mt-2 px-2 text-[10px] text-rose-600">
+              {signOutError}
+            </p>
+          )}
         </div>
       </aside>
 
@@ -409,6 +457,7 @@ export function LiveSupportDesk({
           {view === "inbox" && <InboxView />}
           {view === "knowledge" && user.role === "ADMIN" && <KnowledgeView />}
           {view === "analytics" && user.role === "ADMIN" && <AnalyticsView />}
+          {view === "team" && user.role === "ADMIN" && <TeamView />}
           {view === "settings" && user.role === "ADMIN" && <SettingsView />}
         </main>
         {user.role === "ADMIN" &&
@@ -1680,6 +1729,273 @@ function ArticleModal({
             className="h-9 rounded-xl bg-emerald-500 px-4 text-xs font-bold text-white hover:bg-emerald-600 disabled:opacity-50"
           >
             {save.isPending ? "Menyimpan..." : "Simpan"}
+          </button>
+        </div>
+      </form>
+    </div>
+  )
+}
+
+function TeamView() {
+  const client = useQueryClient()
+  const [form, setForm] = useState({ name: "", email: "", password: "" })
+  const [createdName, setCreatedName] = useState("")
+  const [resettingAgent, setResettingAgent] = useState<Agent | null>(null)
+  const members = useQuery({
+    queryKey: ["agents"],
+    queryFn: () => api<{ data: Agent[] }>("/api/agents"),
+  })
+  const createAgent = useMutation({
+    mutationFn: () =>
+      api<{ data: Agent }>("/api/agents", {
+        method: "POST",
+        body: JSON.stringify(form),
+      }),
+    onSuccess: ({ data }) => {
+      setCreatedName(data.name)
+      setForm({ name: "", email: "", password: "" })
+      void client.invalidateQueries({ queryKey: ["agents"] })
+    },
+  })
+
+  return (
+    <div className="mx-auto w-full max-w-[1180px] p-4 sm:p-7">
+      <div>
+        <h2 className="font-heading text-2xl font-extrabold tracking-tight">
+          Kelola tim support
+        </h2>
+        <p className="mt-1 text-xs text-zinc-500">
+          Tambahkan agent yang dapat login dan menangani percakapan pelanggan.
+        </p>
+      </div>
+      <div className="mt-7 grid gap-5 lg:grid-cols-[1fr_360px]">
+        <section className="overflow-hidden rounded-2xl border border-zinc-200 bg-white dark:border-white/10 dark:bg-zinc-900/50">
+          <div className="flex items-center justify-between border-b border-zinc-100 px-5 py-4 dark:border-white/5">
+            <div>
+              <h3 className="text-sm font-bold">Anggota workspace</h3>
+              <p className="mt-1 text-[10px] text-zinc-400">
+                {members.data?.data.length ?? 0} akun aktif
+              </p>
+            </div>
+            <div className="grid size-9 place-items-center rounded-xl bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10">
+              <UsersRound className="size-4" />
+            </div>
+          </div>
+          {members.isLoading ? (
+            <Loading />
+          ) : members.error ? (
+            <ErrorState error={members.error} />
+          ) : members.data?.data.length ? (
+            <div className="divide-y divide-zinc-100 dark:divide-white/5">
+              {members.data.data.map((member) => (
+                <div
+                  key={member.id}
+                  className="flex items-center gap-3 px-5 py-4"
+                >
+                  <Avatar name={member.name} size="sm" />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-xs font-bold">{member.name}</p>
+                    <p className="mt-0.5 truncate text-[10px] text-zinc-400">
+                      {member.email ?? "Email tidak tersedia"}
+                    </p>
+                  </div>
+                  <span
+                    className={cn(
+                      "rounded-full px-2.5 py-1 text-[9px] font-bold",
+                      member.role === "ADMIN"
+                        ? "bg-violet-50 text-violet-700 dark:bg-violet-500/10 dark:text-violet-300"
+                        : "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300"
+                    )}
+                  >
+                    {member.role === "ADMIN" ? "ADMIN" : "AGENT"}
+                  </span>
+                  {member.role === "AGENT" && (
+                    <button
+                      type="button"
+                      aria-label={`Reset password ${member.name}`}
+                      title="Reset password"
+                      onClick={() => setResettingAgent(member)}
+                      className="rounded-lg p-2 text-zinc-400 transition hover:bg-emerald-50 hover:text-emerald-700 dark:hover:bg-emerald-500/10 dark:hover:text-emerald-300"
+                    >
+                      <KeyRound className="size-4" />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <Empty label="Belum ada anggota tim." />
+          )}
+        </section>
+
+        <form
+          onSubmit={(event) => {
+            event.preventDefault()
+            setCreatedName("")
+            createAgent.mutate()
+          }}
+          className="h-fit rounded-2xl border border-zinc-200 bg-white p-5 dark:border-white/10 dark:bg-zinc-900/50"
+        >
+          <div className="grid size-10 place-items-center rounded-xl bg-emerald-500 text-white">
+            <UserPlus className="size-[18px]" />
+          </div>
+          <h3 className="mt-4 text-sm font-bold">Tambah agent</h3>
+          <p className="mt-1 text-[10px] leading-5 text-zinc-400">
+            Berikan password sementara secara langsung kepada anggota tim.
+          </p>
+          <label className="mt-5 block">
+            <span className="text-[10px] font-bold">Nama lengkap</span>
+            <input
+              required
+              minLength={2}
+              maxLength={80}
+              value={form.name}
+              onChange={(event) =>
+                setForm({ ...form, name: event.target.value })
+              }
+              placeholder="Nama agent"
+              className="mt-2 h-10 w-full rounded-xl border border-zinc-200 bg-transparent px-3 text-xs outline-none focus:border-emerald-400 dark:border-white/10"
+            />
+          </label>
+          <label className="mt-4 block">
+            <span className="text-[10px] font-bold">Email</span>
+            <input
+              required
+              type="email"
+              maxLength={254}
+              value={form.email}
+              onChange={(event) =>
+                setForm({ ...form, email: event.target.value })
+              }
+              placeholder="agent@bisnis.com"
+              className="mt-2 h-10 w-full rounded-xl border border-zinc-200 bg-transparent px-3 text-xs outline-none focus:border-emerald-400 dark:border-white/10"
+            />
+          </label>
+          <label className="mt-4 block">
+            <span className="text-[10px] font-bold">Password sementara</span>
+            <input
+              required
+              type="password"
+              minLength={8}
+              maxLength={128}
+              autoComplete="new-password"
+              value={form.password}
+              onChange={(event) =>
+                setForm({ ...form, password: event.target.value })
+              }
+              placeholder="Minimal 8 karakter"
+              className="mt-2 h-10 w-full rounded-xl border border-zinc-200 bg-transparent px-3 text-xs outline-none focus:border-emerald-400 dark:border-white/10"
+            />
+          </label>
+          {createdName && (
+            <p className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-[10px] font-semibold text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">
+              Akun {createdName} berhasil dibuat.
+            </p>
+          )}
+          {createAgent.error && (
+            <p className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-[10px] font-semibold text-rose-700 dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-300">
+              {createAgent.error.message}
+            </p>
+          )}
+          <button
+            disabled={createAgent.isPending}
+            className="mt-5 inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-emerald-500 text-xs font-bold text-white hover:bg-emerald-600 disabled:opacity-50"
+          >
+            {createAgent.isPending ? "Membuat akun..." : "Tambah agent"}
+          </button>
+        </form>
+      </div>
+      {resettingAgent && (
+        <ResetAgentPasswordModal
+          agent={resettingAgent}
+          onClose={() => setResettingAgent(null)}
+        />
+      )}
+    </div>
+  )
+}
+
+function ResetAgentPasswordModal({
+  agent,
+  onClose,
+}: {
+  agent: Agent
+  onClose: () => void
+}) {
+  const [password, setPassword] = useState("")
+  const reset = useMutation({
+    mutationFn: () =>
+      api("/api/agents", {
+        method: "PATCH",
+        body: JSON.stringify({ userId: agent.id, password }),
+      }),
+    onSuccess: onClose,
+  })
+
+  return (
+    <div className="fixed inset-0 z-[70] grid place-items-center bg-zinc-950/45 p-4 backdrop-blur-sm">
+      <form
+        onSubmit={(event) => {
+          event.preventDefault()
+          reset.mutate()
+        }}
+        className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl dark:bg-zinc-900"
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <div className="grid size-10 place-items-center rounded-xl bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10">
+              <KeyRound className="size-[18px]" />
+            </div>
+            <h2 className="mt-4 font-heading text-lg font-extrabold">
+              Reset password
+            </h2>
+            <p className="mt-1 text-xs leading-5 text-zinc-500">
+              Buat password sementara baru untuk {agent.name}. Semua sesi
+              lamanya akan dikeluarkan.
+            </p>
+          </div>
+          <button
+            type="button"
+            aria-label="Tutup"
+            onClick={onClose}
+            className="rounded-lg p-2 text-zinc-400 hover:bg-zinc-100 dark:hover:bg-white/5"
+          >
+            <X className="size-4" />
+          </button>
+        </div>
+        <label className="mt-6 block">
+          <span className="text-[10px] font-bold">Password sementara baru</span>
+          <input
+            required
+            autoFocus
+            type="password"
+            minLength={8}
+            maxLength={128}
+            autoComplete="new-password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            placeholder="Minimal 8 karakter"
+            className="mt-2 h-10 w-full rounded-xl border border-zinc-200 bg-transparent px-3 text-xs outline-none focus:border-emerald-400 dark:border-white/10"
+          />
+        </label>
+        {reset.error && (
+          <p className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-[10px] font-semibold text-rose-700 dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-300">
+            {reset.error.message}
+          </p>
+        )}
+        <div className="mt-6 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="h-9 rounded-xl px-4 text-xs font-bold text-zinc-500 hover:bg-zinc-100 dark:hover:bg-white/5"
+          >
+            Batal
+          </button>
+          <button
+            disabled={reset.isPending}
+            className="h-9 rounded-xl bg-emerald-500 px-4 text-xs font-bold text-white hover:bg-emerald-600 disabled:opacity-50"
+          >
+            {reset.isPending ? "Mereset..." : "Reset password"}
           </button>
         </div>
       </form>

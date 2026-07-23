@@ -469,6 +469,106 @@ test("assignment, tags, agents, KB, dan settings persisten", async () => {
     "role",
   ])
 
+  const adminAgents = await api("/api/agents", {
+    headers: { cookie: adminCookie },
+  })
+  assert.equal(adminAgents.response.status, 200)
+  assert.ok(adminAgents.body.data.every((member) => member.email))
+
+  const createdEmail = `new-agent-${randomUUID()}@example.com`
+  const createdAgent = await api("/api/agents", {
+    method: "POST",
+    headers: { cookie: adminCookie, "content-type": "application/json" },
+    body: JSON.stringify({
+      name: "New Support Agent",
+      email: createdEmail,
+      password: "TemporaryPass123!",
+    }),
+  })
+  assert.equal(createdAgent.response.status, 201, JSON.stringify(createdAgent.body))
+  assert.equal(createdAgent.body.data.role, "AGENT")
+  assert.equal(createdAgent.body.data.email, createdEmail)
+
+  const forbiddenAgentCreation = await api("/api/agents", {
+    method: "POST",
+    headers: { cookie: agentCookie, "content-type": "application/json" },
+    body: JSON.stringify({
+      name: "Forbidden Agent",
+      email: `forbidden-${randomUUID()}@example.com`,
+      password: "TemporaryPass123!",
+    }),
+  })
+  assert.equal(forbiddenAgentCreation.response.status, 403)
+
+  const duplicateAgent = await api("/api/agents", {
+    method: "POST",
+    headers: { cookie: adminCookie, "content-type": "application/json" },
+    body: JSON.stringify({
+      name: "Duplicate Agent",
+      email: createdEmail,
+      password: "TemporaryPass123!",
+    }),
+  })
+  assert.equal(duplicateAgent.response.status, 409)
+
+  const agentLogin = await api("/api/auth/sign-in/email", {
+    method: "POST",
+    headers: { "content-type": "application/json", origin },
+    body: JSON.stringify({
+      email: createdEmail,
+      password: "TemporaryPass123!",
+    }),
+  })
+  assert.equal(agentLogin.response.status, 200, JSON.stringify(agentLogin.body))
+  assert.equal(agentLogin.body.user.id, createdAgent.body.data.id)
+  const createdAgentCookie = cookieFrom(agentLogin.response)
+  assert.match(createdAgentCookie, /better-auth\.session_token=/)
+
+  const forbiddenPasswordReset = await api("/api/agents", {
+    method: "PATCH",
+    headers: { cookie: agentCookie, "content-type": "application/json" },
+    body: JSON.stringify({
+      userId: createdAgent.body.data.id,
+      password: "ResetPass456!",
+    }),
+  })
+  assert.equal(forbiddenPasswordReset.response.status, 403)
+
+  const resetPassword = await api("/api/agents", {
+    method: "PATCH",
+    headers: { cookie: adminCookie, "content-type": "application/json" },
+    body: JSON.stringify({
+      userId: createdAgent.body.data.id,
+      password: "ResetPass456!",
+    }),
+  })
+  assert.equal(resetPassword.response.status, 204)
+
+  const revokedSession = await api("/api/conversations", {
+    headers: { cookie: createdAgentCookie },
+  })
+  assert.equal(revokedSession.response.status, 401)
+
+  const oldPasswordLogin = await api("/api/auth/sign-in/email", {
+    method: "POST",
+    headers: { "content-type": "application/json", origin },
+    body: JSON.stringify({
+      email: createdEmail,
+      password: "TemporaryPass123!",
+    }),
+  })
+  assert.equal(oldPasswordLogin.response.status, 401)
+
+  const resetPasswordLogin = await api("/api/auth/sign-in/email", {
+    method: "POST",
+    headers: { "content-type": "application/json", origin },
+    body: JSON.stringify({
+      email: createdEmail,
+      password: "ResetPass456!",
+    }),
+  })
+  assert.equal(resetPasswordLogin.response.status, 200)
+
   const updated = await api(`/api/conversations/${conversationId}`, {
     method: "PATCH",
     headers: { cookie: adminCookie, "content-type": "application/json" },

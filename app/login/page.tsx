@@ -29,15 +29,22 @@ export default function LoginPage() {
       email: String(form.get("email")),
       password: String(form.get("password")),
     }
-    const result = await authClient.signIn.email({
-      ...credentials,
-      rememberMe: true,
-    })
-    setLoading(false)
-    if (result.error)
-      return setError(result.error.message ?? "Email atau password tidak valid")
-    router.push("/dashboard")
-    router.refresh()
+    try {
+      const result = await authClient.signIn.email({
+        ...credentials,
+        rememberMe: true,
+      })
+      if (result.error) {
+        setError(result.error.message ?? "Email atau password tidak valid")
+        setLoading(false)
+        return
+      }
+      router.replace("/dashboard")
+      router.refresh()
+    } catch {
+      setError("Tidak dapat terhubung. Coba lagi beberapa saat.")
+      setLoading(false)
+    }
   }
 
   return (
